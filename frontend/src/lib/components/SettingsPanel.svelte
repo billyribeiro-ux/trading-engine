@@ -91,6 +91,8 @@
 
 			<div class="field">
 				<input
+					id="fmp-api-key"
+					name="fmp_api_key"
 					type={reveal ? "text" : "password"}
 					bind:value={keyInput}
 					placeholder="Paste your FMP API key"
