@@ -17,7 +17,7 @@ import pandas as pd
 import pytest
 
 from engine.forward.journal import SignalJournal
-from engine.forward.runner import forward_test
+from engine.forward.runner import forward_test, rolling_forward_test
 from engine.ml.signals import Signal
 
 FEATS = ["f_signal", "f_n1", "f_n2"]
@@ -87,6 +87,34 @@ def test_few_holdout_days_blocks_promotion():
     assert res.realized_edge_r > 0  # the edge itself is real
     assert res.n_holdout_days < 10
     assert not res.persisted  # but too few independent days -> not promoted
+
+
+def test_rolling_persistent_edge_is_robust():
+    """An edge present throughout time persists across MOST sequential windows."""
+    res = rolling_forward_test(
+        _frame(1, train_signal=True, holdout_signal=True),
+        FEATS,
+        n_windows=4,
+        horizon_bars=2,
+        min_holdout_signals=10,
+        min_holdout_days=5,
+    )
+    assert res.n_windows >= 3
+    assert res.robust
+    assert res.pooled_realized_edge_r > 0
+
+
+def test_rolling_edge_that_dies_late_is_not_robust():
+    """Edge on early windows, gone on later ones -> not robust (regime, not skill)."""
+    res = rolling_forward_test(
+        _frame(3, train_signal=True, holdout_signal=False, cut_frac=0.5),
+        FEATS,
+        n_windows=4,
+        horizon_bars=2,
+        min_holdout_signals=10,
+        min_holdout_days=5,
+    )
+    assert not res.robust
 
 
 def _signal(**kw) -> Signal:

@@ -142,3 +142,144 @@ def forward_test(
         persisted=bool(persisted),
         n_holdout_days=n_days,
     )
+
+
+def _holdout_eval(
+    train: pd.DataFrame,
+    holdout: pd.DataFrame,
+    feature_cols: list[str],
+    *,
+    label_col: str,
+    r_col: str,
+    model_kind: str,
+    proba_threshold: float,
+    cost_r: float,
+    seed: int,
+):
+    """Fit on train, score holdout. Returns (edge, p, taken_net, dates, auc, n)."""
+    model = make_model(model_kind, names=list(feature_cols))
+    model.fit(train[feature_cols].to_numpy(dtype=float), train[label_col].to_numpy(dtype=int))
+    rh = holdout[r_col].to_numpy(dtype=float)
+    yh = holdout[label_col].to_numpy(dtype=int)
+    p = model.predict_proba(holdout[feature_cols].to_numpy(dtype=float))
+    baseline = float(_apply_cost(rh, cost_r).mean()) if rh.size else 0.0
+    take = p >= proba_threshold
+    taken = _apply_cost(rh[take], cost_r) if take.any() else np.array([], dtype=float)
+    edge = (float(taken.mean()) - baseline) if taken.size else 0.0
+    pval = _bootstrap_edge_p(taken, baseline, seed=seed)
+    auc = _auc(yh, p)
+    if "date" in holdout.columns and take.any():
+        dates = pd.to_datetime(holdout.loc[take, "date"]).dt.normalize()
+    else:
+        dates = pd.Series([], dtype="datetime64[ns]")
+    return edge, pval, taken, dates, auc, int(taken.size)
+
+
+@dataclass(frozen=True)
+class RollingForwardResult:
+    n_windows: int
+    n_persisted: int
+    windows: tuple[ForwardTestResult, ...]
+    pooled_realized_edge_r: float
+    pooled_realized_p: float
+    pooled_holdout_days: int
+    robust: bool  # persists across MOST sequential windows AND pooled-significant
+
+
+def rolling_forward_test(
+    df: pd.DataFrame,
+    feature_cols: list[str],
+    *,
+    n_windows: int = 4,
+    label_col: str = "y_win",
+    r_col: str = "y_bracket_r",
+    horizon_bars: int = 24,
+    proba_threshold: float = 0.55,
+    cost_r: float = 0.05,
+    min_holdout_signals: int = 15,
+    min_holdout_days: int = 8,
+    model_kind: str = "logistic",
+    seed: int = 0,
+) -> RollingForwardResult:
+    """Walk an expanding-train / sequential-holdout forward test across the
+    timeline. An edge that only shows in the last block is regime luck; one that
+    persists across MOST windows AND pools significant over many distinct days is
+    real. This is the defense against single-regime false positives."""
+    df = df.reset_index(drop=True)
+    n = len(df)
+    seg = n // (n_windows + 1)  # segment 0 is the initial train base
+    empty = RollingForwardResult(0, 0, (), 0.0, 1.0, 0, False)
+    if seg < max(20, min_holdout_signals):
+        return empty
+
+    windows: list[ForwardTestResult] = []
+    all_taken: list[float] = []
+    all_baseline: list[float] = []
+    all_dates: list[pd.Timestamp] = []
+    for k in range(n_windows):
+        lo = seg + k * seg
+        hi = n if k == n_windows - 1 else seg + (k + 1) * seg
+        train = df.iloc[: max(0, lo - horizon_bars)]
+        holdout = df.iloc[lo:hi]
+        if len(train) < 40 or len(holdout) < min_holdout_signals:
+            continue
+        edge, pval, taken, dates, auc, nsig = _holdout_eval(
+            train,
+            holdout,
+            feature_cols,
+            label_col=label_col,
+            r_col=r_col,
+            model_kind=model_kind,
+            proba_threshold=proba_threshold,
+            cost_r=cost_r,
+            seed=seed,
+        )
+        ndays = int(dates.nunique())
+        persisted_w = (
+            nsig >= min_holdout_signals and ndays >= min_holdout_days and edge > 0 and pval < 0.10
+        )
+        windows.append(
+            ForwardTestResult(
+                symbol="?",
+                n_train=len(train),
+                n_holdout=len(holdout),
+                n_holdout_signals=nsig,
+                validated_edge_r=0.0,
+                validated_p=1.0,
+                realized_edge_r=edge,
+                realized_hit_rate=float((taken > 0).mean()) if taken.size else 0.0,
+                realized_p=pval,
+                holdout_auc=auc,
+                forward_decay_r=0.0,
+                persisted=persisted_w,
+                n_holdout_days=ndays,
+            )
+        )
+        all_taken.extend(taken.tolist())
+        all_baseline.extend(_apply_cost(holdout[r_col].to_numpy(dtype=float), cost_r).tolist())
+        all_dates.extend(dates.tolist())
+
+    if not windows:
+        return empty
+    taken_arr = np.array(all_taken, dtype=float)
+    base_mean = float(np.mean(all_baseline)) if all_baseline else 0.0
+    pooled_edge = (float(taken_arr.mean()) - base_mean) if taken_arr.size else 0.0
+    pooled_p = _bootstrap_edge_p(taken_arr, base_mean, seed=seed)
+    pooled_days = (
+        int(pd.to_datetime(pd.Series(all_dates)).dt.normalize().nunique()) if all_dates else 0
+    )
+    n_persisted = sum(1 for w in windows if w.persisted)
+    robust = (
+        n_persisted >= int(np.ceil(0.6 * len(windows)))
+        and pooled_p < 0.10
+        and pooled_days >= min_holdout_days
+    )
+    return RollingForwardResult(
+        n_windows=len(windows),
+        n_persisted=n_persisted,
+        windows=tuple(windows),
+        pooled_realized_edge_r=pooled_edge,
+        pooled_realized_p=pooled_p,
+        pooled_holdout_days=pooled_days,
+        robust=bool(robust),
+    )
