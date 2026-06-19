@@ -18,6 +18,7 @@ fully inspectable, which matters more here than squeezing the last bit of fit.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -41,14 +42,28 @@ class StandardScaler:
     std_: np.ndarray | None = None
 
     def fit(self, X: np.ndarray) -> StandardScaler:
-        self.mean_ = X.mean(axis=0)
-        std = X.std(axis=0)
-        std[std < 1e-9] = 1.0  # guard constant columns
-        self.std_ = std
+        # NaN-aware. Event feature vectors are HETEROGENEOUS: a vwap event has no
+        # leg_* features, a leg event has no level_* features, so the stacked
+        # frame is full of NaN by construction. Standardize on the present values
+        # (nanmean/nanstd) and impute missing -> the column mean (neutral). An
+        # all-NaN or constant column collapses to mean 0 / std 1. Without this the
+        # logistic trains on NaN and predict_proba returns all-NaN -> the harness
+        # silently takes zero signals and reports a garbage AUC. (Upgrade path:
+        # per-event-type models or explicit missing-indicators.)
+        with warnings.catch_warnings():
+            # All-NaN / single-value column slices warn; we handle them below.
+            warnings.simplefilter("ignore", RuntimeWarning)
+            mean = np.nanmean(X, axis=0)
+            std = np.nanstd(X, axis=0)
+        self.mean_ = np.where(np.isfinite(mean), mean, 0.0)
+        self.std_ = np.where(np.isfinite(std) & (std >= 1e-9), std, 1.0)
         return self
 
     def transform(self, X: np.ndarray) -> np.ndarray:
-        return (X - self.mean_) / self.std_
+        Xs = (X - self.mean_) / self.std_
+        # Mean-impute any remaining NaN: 0 IS the standardized column mean, so a
+        # missing/type-specific feature reads as neutral. No NaN reaches the model.
+        return np.nan_to_num(Xs, nan=0.0, posinf=0.0, neginf=0.0)
 
     def fit_transform(self, X: np.ndarray) -> np.ndarray:
         return self.fit(X).transform(X)
