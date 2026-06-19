@@ -106,6 +106,34 @@ export interface DissectionHeader {
 	scale_atr: number | null;
 }
 
+export interface JournalEntry {
+	symbol: string;
+	scanner: string;
+	direction: string;
+	event_type: string;
+	timestamp: string;
+	entry: number;
+	stop: number;
+	target: number;
+	probability: number;
+	oos_edge_r: number;
+	status: string;
+	realized_r?: number;
+	exit_reason?: string;
+}
+
+export interface JournalResponse {
+	summary: {
+		open: number;
+		resolved: number;
+		realized_mean_r: number;
+		realized_hit_rate: number;
+		validated_edge_r: number;
+		by_reason: Record<string, number>;
+	};
+	entries: JournalEntry[];
+}
+
 export interface Dissection {
 	symbol: string;
 	date: string;

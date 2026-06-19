@@ -2,7 +2,7 @@
 // Base URL from PUBLIC_API_BASE (set in .env), defaulting to the local dev server.
 
 import { env } from "$env/dynamic/public";
-import type { Dissection, ScreenRequest, ScreenResponse } from "./types";
+import type { Dissection, JournalResponse, ScreenRequest, ScreenResponse } from "./types";
 
 const BASE = (env.PUBLIC_API_BASE ?? "http://127.0.0.1:8000").replace(/\/$/, "");
 
@@ -38,4 +38,8 @@ export async function dissect(symbol: string, timeframe: string, date?: string):
 
 export async function capabilities(): Promise<{ tier: string; rate_limit_per_min: number }> {
 	return parse(await fetch(`${BASE}/capabilities`));
+}
+
+export async function journal(): Promise<JournalResponse> {
+	return parse<JournalResponse>(await fetch(`${BASE}/journal`));
 }

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 from functools import lru_cache
+from pathlib import Path
 from typing import Callable, Optional
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -23,6 +24,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from ..data.client import FMPClient
+from ..forward.journal import SignalJournal
+from ..forward.live import _DEFAULT_JOURNAL
 from ..intraday.bars import Timeframe
 from ..ml.signals import ScreenResult, batch_rank, intraday_config
 from ..portfolio.scanner import portfolio_config
@@ -95,6 +98,12 @@ def get_screener(client: FMPClient = Depends(get_client)) -> Screener:
     return run
 
 
+def get_journal() -> SignalJournal:
+    """The live forward-test journal. JOURNAL_PATH overrides the default."""
+    path = os.environ.get("JOURNAL_PATH")
+    return SignalJournal(Path(path) if path else _DEFAULT_JOURNAL)
+
+
 def get_dissector(client: FMPClient = Depends(get_client)) -> Dissector:
     """Default dissector wired to the engine runner. Overridden in tests."""
 
@@ -125,6 +134,23 @@ def create_app() -> FastAPI:
     @app.get("/capabilities")
     def capabilities(client: FMPClient = Depends(get_client)) -> dict:
         return client.capabilities()
+
+    @app.get("/journal")
+    def journal(j: SignalJournal = Depends(get_journal)) -> dict:
+        """Live forward-test journal: realized-vs-validated summary + recent entries.
+        Needs no FMP key (reads the local journal file)."""
+        s = j.summary()
+        return {
+            "summary": {
+                "open": s.n_open,
+                "resolved": s.n_resolved,
+                "realized_mean_r": round(s.realized_mean_r, 4),
+                "realized_hit_rate": round(s.realized_hit_rate, 4),
+                "validated_edge_r": round(s.mean_validated_edge_r, 4),
+                "by_reason": s.by_reason,
+            },
+            "entries": j.entries()[-200:],
+        }
 
     @app.post("/screen")
     def screen(req: ScreenRequest, screener: Screener = Depends(get_screener)) -> dict:

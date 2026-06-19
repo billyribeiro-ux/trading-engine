@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { dissect, screen } from "$lib/api";
 	import DissectionView from "$lib/components/DissectionView.svelte";
+	import JournalView from "$lib/components/JournalView.svelte";
 	import type { Dissection, ScreenResponse } from "$lib/types";
 
 	const LOOKBACK_DEFAULT: Record<string, number> = { intraday: 60, swing: 730, portfolio: 1825 };
@@ -230,6 +231,9 @@
 			{/if}
 		</div>
 	{/if}
+
+	<hr />
+	<JournalView />
 </main>
 
 <style>

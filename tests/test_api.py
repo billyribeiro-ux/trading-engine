@@ -15,7 +15,7 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from engine.api.app import app, get_client, get_dissector, get_screener
+from engine.api.app import app, get_client, get_dissector, get_journal, get_screener
 from engine.ml.signals import ScreenResult, Signal
 from engine.ml.validate import ValidationReport
 from engine.session.dissect import dissect_session
@@ -159,6 +159,21 @@ def test_dissect_404_when_no_session(client):
     app.dependency_overrides[get_dissector] = lambda: fake_dissect
     r = client.get("/dissect/ZZZZ?date=2099-01-01")
     assert r.status_code == 404
+
+
+def test_journal_endpoint_reports_summary_and_entries(client, tmp_path):
+    from engine.forward.journal import SignalJournal
+
+    j = SignalJournal(tmp_path / "j.jsonl")
+    j.log([_signal()], scanner="swing")
+    app.dependency_overrides[get_journal] = lambda: j
+    r = client.get("/journal")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["summary"]["open"] == 1
+    assert body["summary"]["resolved"] == 0
+    assert len(body["entries"]) == 1
+    assert body["entries"][0]["symbol"] == "TSLA"
 
 
 def test_capabilities_reports_tier(client):
