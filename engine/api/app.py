@@ -25,7 +25,9 @@ from pydantic import BaseModel, Field
 from ..data.client import FMPClient
 from ..intraday.bars import Timeframe
 from ..ml.signals import ScreenResult, batch_rank, intraday_config
+from ..portfolio.scanner import portfolio_config
 from ..session.runner import dissect_real_session
+from ..swing.scanner import swing_config
 from .serialize import dissection_to_dict, screen_to_dict
 
 # A screener maps a request -> ScreenResult; a dissector maps (symbol, tf, date)
@@ -34,11 +36,17 @@ Screener = Callable[["ScreenRequest"], ScreenResult]
 Dissector = Callable[[str, Timeframe, Optional[str]], tuple]
 
 
+_SCANNER_DEFAULT_LOOKBACK = {"intraday": 60, "swing": 730, "portfolio": 2920}
+
+
 class ScreenRequest(BaseModel):
     symbols: list[str] = Field(..., min_length=1, description="Watchlist tickers")
-    timeframe: str = Field("5min", description="Bar resolution, e.g. 1min/5min/15min")
-    lookback_days: int = Field(60, ge=5, le=365, description="The lookback knob")
-    style: str = Field("reversal", description="'reversal' or 'scalp'")
+    scanner: str = Field("intraday", description="'intraday' | 'swing' | 'portfolio'")
+    timeframe: str = Field("5min", description="Intraday bar resolution (intraday only)")
+    lookback_days: Optional[int] = Field(
+        None, ge=5, le=3650, description="The lookback knob; None -> per-scanner default"
+    )
+    style: str = Field("reversal", description="Intraday style: 'reversal' or 'scalp'")
     proba_threshold: float = Field(0.55, ge=0.5, lt=1.0)
     fdr: float = Field(0.10, gt=0.0, le=0.5)
     min_edge_r: float = Field(0.0, description="Minimum OOS edge over baseline (R)")
@@ -57,19 +65,32 @@ def get_client() -> FMPClient:
 
 
 def get_screener(client: FMPClient = Depends(get_client)) -> Screener:
-    """Default screener wired to the intraday engine. Overridden in tests."""
+    """Default screener dispatching to the chosen scanner. Overridden in tests.
+
+    One pipeline (batch_rank), three configs — the only thing that varies is which
+    ScannerConfig is built (intraday / swing / portfolio)."""
 
     def run(req: ScreenRequest) -> ScreenResult:
-        cfg = intraday_config(
-            client,
-            timeframe=Timeframe(req.timeframe),
-            lookback_days=req.lookback_days,
-            style=req.style,
-            proba_threshold=req.proba_threshold,
-            fdr=req.fdr,
-            min_edge_r=req.min_edge_r,
-        )
-        return batch_rank([s.strip().upper() for s in req.symbols], cfg)
+        gate = {
+            "proba_threshold": req.proba_threshold,
+            "fdr": req.fdr,
+            "min_edge_r": req.min_edge_r,
+        }
+        lookback = req.lookback_days or _SCANNER_DEFAULT_LOOKBACK.get(req.scanner, 60)
+        symbols = [s.strip().upper() for s in req.symbols]
+        if req.scanner == "swing":
+            cfg = swing_config(client, lookback_days=lookback, **gate)
+        elif req.scanner == "portfolio":
+            cfg = portfolio_config(client, lookback_days=lookback, **gate)
+        else:
+            cfg = intraday_config(
+                client,
+                timeframe=Timeframe(req.timeframe),
+                lookback_days=lookback,
+                style=req.style,
+                **gate,
+            )
+        return batch_rank(symbols, cfg)
 
     return run
 
@@ -107,10 +128,15 @@ def create_app() -> FastAPI:
 
     @app.post("/screen")
     def screen(req: ScreenRequest, screener: Screener = Depends(get_screener)) -> dict:
-        try:
-            Timeframe(req.timeframe)
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=f"bad timeframe: {req.timeframe}") from exc
+        if req.scanner not in _SCANNER_DEFAULT_LOOKBACK:
+            raise HTTPException(status_code=422, detail=f"unknown scanner: {req.scanner}")
+        if req.scanner == "intraday":
+            try:
+                Timeframe(req.timeframe)
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=422, detail=f"bad timeframe: {req.timeframe}"
+                ) from exc
         result = screener(req)
         return screen_to_dict(result)
 

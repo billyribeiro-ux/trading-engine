@@ -3,12 +3,19 @@
 	import DissectionView from "$lib/components/DissectionView.svelte";
 	import type { Dissection, ScreenResponse } from "$lib/types";
 
+	const LOOKBACK_DEFAULT: Record<string, number> = { intraday: 60, swing: 730, portfolio: 1825 };
+
+	let scanner = $state("intraday");
 	let watchlist = $state("TSLA, NVDA, AAPL");
 	let timeframe = $state("5min");
 	let style = $state("reversal");
 	let lookbackDays = $state(60);
 	let probaThreshold = $state(0.55);
 	let fdr = $state(0.1);
+
+	function onScannerChange() {
+		lookbackDays = LOOKBACK_DEFAULT[scanner] ?? 60;
+	}
 
 	let screening = $state(false);
 	let screenError = $state<string | null>(null);
@@ -34,6 +41,7 @@
 		try {
 			result = await screen({
 				symbols,
+				scanner,
 				timeframe,
 				style,
 				lookback_days: lookbackDays,
@@ -77,31 +85,41 @@
 			runScreen();
 		}}
 	>
+		<label>
+			Scanner
+			<select bind:value={scanner} onchange={onScannerChange}>
+				<option value="intraday">intraday</option>
+				<option value="swing">swing</option>
+				<option value="portfolio">portfolio</option>
+			</select>
+		</label>
 		<label class="grow">
 			Watchlist
 			<input bind:value={watchlist} placeholder="TSLA, NVDA, AAPL" />
 		</label>
 		<label>
 			Lookback (days)
-			<input type="number" min="5" max="365" bind:value={lookbackDays} />
+			<input type="number" min="5" max="3650" bind:value={lookbackDays} />
 		</label>
-		<label>
-			Timeframe
-			<select bind:value={timeframe}>
-				<option>1min</option>
-				<option>5min</option>
-				<option>15min</option>
-				<option>30min</option>
-				<option>1hour</option>
-			</select>
-		</label>
-		<label>
-			Style
-			<select bind:value={style}>
-				<option value="reversal">reversal</option>
-				<option value="scalp">scalp</option>
-			</select>
-		</label>
+		{#if scanner === "intraday"}
+			<label>
+				Timeframe
+				<select bind:value={timeframe}>
+					<option>1min</option>
+					<option>5min</option>
+					<option>15min</option>
+					<option>30min</option>
+					<option>1hour</option>
+				</select>
+			</label>
+			<label>
+				Style
+				<select bind:value={style}>
+					<option value="reversal">reversal</option>
+					<option value="scalp">scalp</option>
+				</select>
+			</label>
+		{/if}
 		<label>
 			Min prob
 			<input type="number" min="0.5" max="0.99" step="0.01" bind:value={probaThreshold} />

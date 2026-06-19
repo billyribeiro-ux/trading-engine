@@ -41,6 +41,7 @@ export interface ScreenResponse {
 
 export interface ScreenRequest {
 	symbols: string[];
+	scanner: string; // "intraday" | "swing" | "portfolio"
 	timeframe: string;
 	lookback_days: number;
 	style: string;

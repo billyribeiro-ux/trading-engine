@@ -112,6 +112,27 @@ def test_screen_requires_symbols(client):
     assert r.status_code == 422  # pydantic min_length
 
 
+def test_screen_accepts_all_three_scanners(client):
+    _override_screener(ScreenResult((_signal(),), (), (_report("TSLA", 0.03),)))
+    for scanner in ("intraday", "swing", "portfolio"):
+        r = client.post("/screen", json={"symbols": ["TSLA"], "scanner": scanner})
+        assert r.status_code == 200, scanner
+        assert r.json()["summary"]["n_signals"] == 1
+
+
+def test_screen_rejects_unknown_scanner(client):
+    _override_screener(ScreenResult((), (), ()))
+    r = client.post("/screen", json={"symbols": ["TSLA"], "scanner": "quantum"})
+    assert r.status_code == 422
+
+
+def test_swing_timeframe_not_validated(client):
+    """timeframe is intraday-only; a swing screen ignores it (no 422)."""
+    _override_screener(ScreenResult((), (), ()))
+    r = client.post("/screen", json={"symbols": ["TSLA"], "scanner": "swing", "timeframe": "7min"})
+    assert r.status_code == 200
+
+
 def test_dissect_returns_structured_consistent_report(client):
     def fake_dissect(symbol, tf, on_date):
         ses = S.multileg_session(np.random.default_rng(0), n_legs=8)
