@@ -51,6 +51,54 @@ export async function journal(): Promise<JournalResponse> {
 	return parse<JournalResponse>(await fetch(`${BASE}/journal`));
 }
 
+export async function scanJournal(body: {
+	scanner?: string;
+	model?: string;
+	direction?: string;
+	symbols?: string[];
+}): Promise<{ logged: number; signals: unknown[]; summary: JournalResponse["summary"] }> {
+	const res = await fetch(`${BASE}/journal/scan`, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify(body)
+	});
+	return parse(res);
+}
+
+export async function resolveJournal(
+	scanner: string
+): Promise<{ resolved: number; total: number; summary: JournalResponse["summary"] }> {
+	const res = await fetch(`${BASE}/journal/resolve`, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({ scanner })
+	});
+	return parse(res);
+}
+
+// POST rows to the backend, get a file back, and trigger a browser download.
+export async function downloadExport(
+	filename: string,
+	format: "csv" | "xlsx",
+	sheets: Record<string, Record<string, unknown>[]>
+): Promise<void> {
+	const res = await fetch(`${BASE}/export`, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({ filename, format, sheets })
+	});
+	if (!res.ok) throw new Error(`Export failed: ${res.status} ${res.statusText}`);
+	const blob = await res.blob();
+	const url = URL.createObjectURL(blob);
+	const a = document.createElement("a");
+	a.href = url;
+	a.download = `${filename}.${format}`;
+	document.body.appendChild(a);
+	a.click();
+	a.remove();
+	URL.revokeObjectURL(url);
+}
+
 export async function getSettings(): Promise<SettingsStatus> {
 	return parse<SettingsStatus>(await fetch(`${BASE}/settings`));
 }

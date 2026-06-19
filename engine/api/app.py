@@ -19,11 +19,12 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Callable, Optional
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from ..data.client import FMPClient
+from ..export import to_bytes
 from ..forward.journal import SignalJournal
 from ..forward.live import _DEFAULT_JOURNAL
 from ..intraday.bars import Timeframe
@@ -43,6 +44,26 @@ KeyValidator = Callable[[str], dict]
 
 _SCANNER_DEFAULT_LOOKBACK = {"intraday": 60, "swing": 730, "portfolio": 2920}
 
+# Default live universe for in-app scan (the validated swing-long names + peers).
+_DEFAULT_LIVE_UNIVERSE = [
+    "AAPL",
+    "MSFT",
+    "NVDA",
+    "AMZN",
+    "META",
+    "GOOGL",
+    "KO",
+    "PEP",
+    "DIS",
+    "CSCO",
+    "INTC",
+    "ORCL",
+    "CRM",
+    "ADBE",
+    "COST",
+    "HD",
+]
+
 
 class ScreenRequest(BaseModel):
     symbols: list[str] = Field(..., min_length=1, description="Watchlist tickers")
@@ -59,6 +80,19 @@ class ScreenRequest(BaseModel):
 
 class SettingsBody(BaseModel):
     fmp_api_key: str = Field(..., min_length=8, description="Financial Modeling Prep API key")
+
+
+class JournalActionBody(BaseModel):
+    symbols: Optional[list[str]] = Field(None, description="Universe; None -> default live set")
+    scanner: str = Field("swing", description="'intraday' | 'swing' | 'portfolio'")
+    model: str = Field("gbt", description="'logistic' | 'gbt'")
+    direction: str = Field("long", description="'long' | 'short'")
+
+
+class ExportBody(BaseModel):
+    format: str = Field("csv", pattern="^(csv|xlsx)$")
+    filename: str = Field("export", min_length=1, max_length=80)
+    sheets: dict[str, list[dict]] = Field(..., description="{sheet_name: [row, ...]}")
 
 
 @lru_cache(maxsize=4)
@@ -139,6 +173,33 @@ def get_dissector(client: FMPClient = Depends(get_client)) -> Dissector:
     return run
 
 
+def get_live_scan() -> Callable:
+    """The live scan op (fit validated model, score current events, log). Overridden
+    in tests so the endpoint wiring is verified offline."""
+    from ..forward.live import scan_and_log
+
+    return scan_and_log
+
+
+def get_live_resolve() -> Callable:
+    """The live resolve op (resolve open journal entries vs fresh bars)."""
+    from ..forward.live import resolve
+
+    return resolve
+
+
+def _journal_payload(j: SignalJournal) -> dict:
+    s = j.summary()
+    return {
+        "open": s.n_open,
+        "resolved": s.n_resolved,
+        "realized_mean_r": round(s.realized_mean_r, 4),
+        "realized_hit_rate": round(s.realized_hit_rate, 4),
+        "validated_edge_r": round(s.mean_validated_edge_r, 4),
+        "by_reason": s.by_reason,
+    }
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="Trading Engine API", version="0.1.0")
     # The SvelteKit dev server runs on 5173; allow local origins.
@@ -165,18 +226,67 @@ def create_app() -> FastAPI:
     def journal(j: SignalJournal = Depends(get_journal)) -> dict:
         """Live forward-test journal: realized-vs-validated summary + recent entries.
         Needs no FMP key (reads the local journal file)."""
-        s = j.summary()
+        return {"summary": _journal_payload(j), "entries": j.entries()[-200:]}
+
+    @app.post("/journal/scan")
+    def journal_scan(
+        body: JournalActionBody,
+        client: FMPClient = Depends(get_client),
+        j: SignalJournal = Depends(get_journal),
+        scan=Depends(get_live_scan),
+    ) -> dict:
+        """Run a live scan and append fired signals to the journal (in-app)."""
+        from ..forward.live import LiveConfig
+
+        syms = tuple(s.strip().upper() for s in (body.symbols or _DEFAULT_LIVE_UNIVERSE))
+        live = LiveConfig(
+            symbols=syms,
+            scanner=body.scanner,
+            model_kind=body.model,
+            direction=body.direction,
+            journal_path=j.path,
+        )
+        sigs = scan(client, live, j)
         return {
-            "summary": {
-                "open": s.n_open,
-                "resolved": s.n_resolved,
-                "realized_mean_r": round(s.realized_mean_r, 4),
-                "realized_hit_rate": round(s.realized_hit_rate, 4),
-                "validated_edge_r": round(s.mean_validated_edge_r, 4),
-                "by_reason": s.by_reason,
-            },
-            "entries": j.entries()[-200:],
+            "logged": len(sigs),
+            "signals": [s.as_dict() for s in sigs[:50]],
+            "summary": _journal_payload(j),
         }
+
+    @app.post("/journal/resolve")
+    def journal_resolve(
+        body: JournalActionBody,
+        client: FMPClient = Depends(get_client),
+        j: SignalJournal = Depends(get_journal),
+        resolver=Depends(get_live_resolve),
+    ) -> dict:
+        """Resolve open journal entries against fresh bars (in-app)."""
+        from ..forward.live import LiveConfig
+
+        live = LiveConfig(symbols=(), scanner=body.scanner, journal_path=j.path)
+        rows = resolver(client, live, j)
+        resolved = sum(1 for r in rows if r.get("status") == "resolved")
+        return {"resolved": resolved, "total": len(rows), "summary": _journal_payload(j)}
+
+    @app.post("/export")
+    def export_results(body: ExportBody) -> Response:
+        """Serialize result rows to a CSV or multi-sheet XLSX download. No FMP key
+        needed — the browser posts the rows it already has."""
+        import pandas as pd
+
+        frames = {name: pd.DataFrame(rows) for name, rows in body.sheets.items()}
+        data = to_bytes(frames, body.format)
+        ext = "xlsx" if body.format == "xlsx" else "csv"
+        media = (
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            if body.format == "xlsx"
+            else "text/csv"
+        )
+        return Response(
+            content=data,
+            media_type=media,
+            headers={"Content-Disposition": f'attachment; filename="{body.filename}.{ext}"'},
+        )
 
     @app.get("/settings")
     def read_settings(store: SettingsStore = Depends(get_settings_store)) -> dict:

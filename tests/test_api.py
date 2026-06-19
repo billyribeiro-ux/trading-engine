@@ -21,6 +21,8 @@ from engine.api.app import (
     get_dissector,
     get_journal,
     get_key_validator,
+    get_live_resolve,
+    get_live_scan,
     get_screener,
     get_settings_store,
 )
@@ -230,6 +232,62 @@ def test_settings_post_rejects_bad_key(client, tmp_path):
 def test_settings_post_requires_min_length(client):
     r = client.post("/settings", json={"fmp_api_key": "short"})
     assert r.status_code == 422  # pydantic min_length
+
+
+def test_journal_scan_logs_via_injected_op(client, tmp_path):
+    from engine.forward.journal import SignalJournal
+
+    j = SignalJournal(tmp_path / "j.jsonl")
+    sig = _signal()
+    app.dependency_overrides[get_client] = lambda: object()  # unused by the fake op
+    app.dependency_overrides[get_journal] = lambda: j
+
+    def fake_scan(client, live, journal):
+        journal.log([sig], scanner=live.scanner)
+        return [sig]
+
+    app.dependency_overrides[get_live_scan] = lambda: fake_scan
+    r = client.post("/journal/scan", json={"scanner": "swing"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["logged"] == 1
+    assert body["signals"][0]["symbol"] == "TSLA"
+    assert body["summary"]["open"] == 1
+
+
+def test_journal_resolve_via_injected_op(client, tmp_path):
+    from engine.forward.journal import SignalJournal
+
+    j = SignalJournal(tmp_path / "j.jsonl")
+    j.log([_signal()], scanner="swing")
+    app.dependency_overrides[get_client] = lambda: object()
+    app.dependency_overrides[get_journal] = lambda: j
+    app.dependency_overrides[get_live_resolve] = lambda: (
+        lambda client, live, journal: [{"status": "resolved"}, {"status": "open"}]
+    )
+    r = client.post("/journal/resolve", json={"scanner": "swing"})
+    assert r.status_code == 200
+    assert r.json()["resolved"] == 1 and r.json()["total"] == 2
+
+
+def test_export_csv_and_xlsx(client):
+    rows = {"format": "csv", "filename": "sig", "sheets": {"signals": [{"a": 1, "b": "x"}]}}
+    r = client.post("/export", json=rows)
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/csv")
+    assert 'filename="sig.csv"' in r.headers["content-disposition"]
+    assert b"a,b" in r.content and b"1,x" in r.content
+
+    r2 = client.post("/export", json={**rows, "format": "xlsx", "filename": "book"})
+    assert r2.status_code == 200
+    assert "spreadsheetml" in r2.headers["content-type"]
+    assert 'filename="book.xlsx"' in r2.headers["content-disposition"]
+    assert r2.content[:2] == b"PK"  # xlsx is a zip container
+
+
+def test_export_rejects_bad_format(client):
+    r = client.post("/export", json={"format": "pdf", "filename": "x", "sheets": {}})
+    assert r.status_code == 422  # pattern constraint
 
 
 def test_capabilities_reports_tier(client):

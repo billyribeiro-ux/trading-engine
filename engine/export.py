@@ -14,6 +14,7 @@ per sheet.
 
 from __future__ import annotations
 
+import io
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
@@ -130,6 +131,24 @@ def write_excel(sheets: Mapping[str, pd.DataFrame], path: str | Path) -> Path:
         if not any_written:
             pd.DataFrame({"(no rows)": []}).to_excel(xl, sheet_name="results", index=False)
     return path
+
+
+def to_bytes(sheets: Mapping[str, pd.DataFrame], fmt: str) -> bytes:
+    """Serialize sheets to in-memory bytes for an HTTP download. `xlsx` -> one
+    multi-sheet workbook; `csv` -> the single (first) sheet."""
+    if fmt == "xlsx":
+        buf = io.BytesIO()
+        with pd.ExcelWriter(buf, engine="openpyxl") as xl:
+            wrote = False
+            for name, df in sheets.items():
+                d = df if (df is not None and not df.empty) else pd.DataFrame({"(no rows)": []})
+                d.to_excel(xl, sheet_name=str(name)[:31], index=False)
+                wrote = True
+            if not wrote:
+                pd.DataFrame({"(no rows)": []}).to_excel(xl, sheet_name="results", index=False)
+        return buf.getvalue()
+    first = next(iter(sheets.values())) if sheets else pd.DataFrame()
+    return (first if first is not None else pd.DataFrame()).to_csv(index=False).encode("utf-8")
 
 
 def export(sheets: Mapping[str, pd.DataFrame], path: str | Path) -> list[Path]:

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { dissect, screen } from "$lib/api";
+	import { dissect, downloadExport, screen } from "$lib/api";
 	import DissectionView from "$lib/components/DissectionView.svelte";
 	import JournalView from "$lib/components/JournalView.svelte";
 	import SettingsPanel from "$lib/components/SettingsPanel.svelte";
@@ -9,6 +9,8 @@
 		ChartBarIcon,
 		ChartLineUpIcon,
 		CrosshairIcon,
+		FileCsvIcon,
+		FileXlsIcon,
 		FlaskIcon,
 		FunnelIcon,
 		GaugeIcon,
@@ -86,6 +88,18 @@
 			dissectError = e instanceof Error ? e.message : String(e);
 		} finally {
 			dissecting = false;
+		}
+	}
+
+	async function exportScreen(format: "csv" | "xlsx") {
+		if (!result) return;
+		try {
+			await downloadExport("screen", format, {
+				signals: result.signals as unknown as Record<string, unknown>[],
+				reports: result.reports as unknown as Record<string, unknown>[]
+			});
+		} catch (e) {
+			screenError = e instanceof Error ? e.message : String(e);
 		}
 	}
 
@@ -167,11 +181,17 @@
 	{/if}
 
 	{#if result}
-		<p class="summary">
-			<ListChecksIcon size={15} />
-			{result.summary.configs_evaluated} configs evaluated · {result.summary.survived} survived ·
-			<b>{result.summary.n_signals} signals</b>
-		</p>
+		<div class="summary-row">
+			<p class="summary">
+				<ListChecksIcon size={15} />
+				{result.summary.configs_evaluated} configs evaluated · {result.summary.survived} survived ·
+				<b>{result.summary.n_signals} signals</b>
+			</p>
+			<div class="result-actions">
+				<button onclick={() => exportScreen("csv")}><FileCsvIcon size={14} /> CSV</button>
+				<button onclick={() => exportScreen("xlsx")}><FileXlsIcon size={14} /> XLSX</button>
+			</div>
+		</div>
 
 		{#if result.signals.length}
 			<table class="signals">
@@ -362,6 +382,29 @@
 	}
 	.summary b {
 		color: var(--fg);
+	}
+	.summary-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		flex-wrap: wrap;
+	}
+	.result-actions {
+		display: flex;
+		gap: 0.4rem;
+	}
+	.result-actions button {
+		background: var(--bg-panel);
+		color: var(--fg);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		padding: 0.3rem 0.7rem;
+		cursor: pointer;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
+		font-size: 0.85rem;
 	}
 	table {
 		width: 100%;

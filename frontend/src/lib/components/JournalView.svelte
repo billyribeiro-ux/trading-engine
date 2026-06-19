@@ -1,12 +1,15 @@
 <script lang="ts">
 	import { onMount } from "svelte";
-	import { journal } from "$lib/api";
+	import { downloadExport, journal, resolveJournal, scanJournal } from "$lib/api";
 	import type { JournalResponse } from "$lib/types";
 	import {
 		ArrowsClockwiseIcon,
 		CheckCircleIcon,
 		ClockIcon,
 		CurrencyDollarIcon,
+		FileCsvIcon,
+		FileXlsIcon,
+		LightningIcon,
 		NotebookIcon,
 		TrendDownIcon,
 		TrendUpIcon
@@ -14,7 +17,9 @@
 
 	let data = $state<JournalResponse | null>(null);
 	let loading = $state(false);
+	let busy = $state(false);
 	let error = $state<string | null>(null);
+	let actionMsg = $state<string | null>(null);
 
 	async function load() {
 		loading = true;
@@ -30,17 +35,74 @@
 
 	onMount(load);
 
+	async function doScan() {
+		busy = true;
+		actionMsg = null;
+		try {
+			const r = await scanJournal({ scanner: "swing", model: "gbt", direction: "long" });
+			actionMsg = `Logged ${r.logged} signal(s).`;
+			await load();
+		} catch (e) {
+			actionMsg = e instanceof Error ? e.message : String(e);
+		} finally {
+			busy = false;
+		}
+	}
+
+	async function doResolve() {
+		busy = true;
+		actionMsg = null;
+		try {
+			const r = await resolveJournal("swing");
+			actionMsg = `Resolved ${r.resolved} of ${r.total}.`;
+			await load();
+		} catch (e) {
+			actionMsg = e instanceof Error ? e.message : String(e);
+		} finally {
+			busy = false;
+		}
+	}
+
+	async function exportJournal(format: "csv" | "xlsx") {
+		if (!data?.entries.length) return;
+		try {
+			await downloadExport("journal", format, {
+				journal: data.entries as unknown as Record<string, unknown>[]
+			});
+		} catch (e) {
+			actionMsg = e instanceof Error ? e.message : String(e);
+		}
+	}
+
 	const sign = (x: number) => `${x >= 0 ? "+" : ""}${x.toFixed(3)}`;
+	const hasEntries = $derived(!!data?.entries.length);
 </script>
 
 <section class="journal">
 	<div class="bar">
 		<h2><NotebookIcon weight="duotone" size="1.1em" /> Live forward journal</h2>
-		<button onclick={load} disabled={loading}>
-			<ArrowsClockwiseIcon size={14} weight="bold" />
-			{loading ? "…" : "Refresh"}
-		</button>
+		<div class="actions">
+			<button onclick={doScan} disabled={busy}>
+				<LightningIcon size={14} weight="bold" /> Scan
+			</button>
+			<button onclick={doResolve} disabled={busy}>
+				<CheckCircleIcon size={14} weight="bold" /> Resolve
+			</button>
+			<button onclick={() => exportJournal("csv")} disabled={!hasEntries}>
+				<FileCsvIcon size={14} /> CSV
+			</button>
+			<button onclick={() => exportJournal("xlsx")} disabled={!hasEntries}>
+				<FileXlsIcon size={14} /> XLSX
+			</button>
+			<button onclick={load} disabled={busy || loading} aria-label="Refresh">
+				<ArrowsClockwiseIcon size={14} weight="bold" />
+			</button>
+		</div>
 	</div>
+
+	{#if actionMsg}
+		<p class="action-msg">{actionMsg}</p>
+	{/if}
 
 	{#if error}
 		<p class="error">Journal unavailable: {error}</p>
@@ -101,7 +163,7 @@
 				</tbody>
 			</table>
 		{:else}
-			<p class="muted">No signals logged yet. Run <code>engine-forward scan</code>.</p>
+			<p class="muted">No signals logged yet. Press <b>Scan</b> to log today's signals.</p>
 		{/if}
 	{:else}
 		<p class="muted">Loading…</p>
@@ -118,6 +180,8 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
+		gap: 1rem;
+		flex-wrap: wrap;
 	}
 	.bar h2 {
 		margin: 0;
@@ -129,16 +193,31 @@
 	.bar h2 :global(svg) {
 		color: var(--accent);
 	}
+	.actions {
+		display: flex;
+		gap: 0.4rem;
+		flex-wrap: wrap;
+	}
 	button {
 		background: var(--bg-panel);
 		color: var(--fg);
 		border: 1px solid var(--border);
 		border-radius: 6px;
-		padding: 0.3rem 0.8rem;
+		padding: 0.3rem 0.7rem;
 		cursor: pointer;
 		display: inline-flex;
 		align-items: center;
 		gap: 0.35rem;
+		font-size: 0.85rem;
+	}
+	button:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+	.action-msg {
+		margin: 0;
+		font-size: 0.8rem;
+		color: var(--accent);
 	}
 	.summary {
 		color: var(--muted);
@@ -195,8 +274,5 @@
 	}
 	.error {
 		color: var(--down);
-	}
-	code {
-		color: var(--accent);
 	}
 </style>
