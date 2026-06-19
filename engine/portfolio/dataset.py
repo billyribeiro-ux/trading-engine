@@ -15,6 +15,7 @@ from ..core.structural_unit import BarWindow
 from ..data.client import FMPClient
 from ..ml.labels import BracketSpec, label_events
 from .features import DEFAULT_POSITION_SCALE, extract_position_events
+from .fundamentals import FundamentalSeries
 from .window import align_benchmark, build_weekly_window
 
 # ~2-month position: +2 ATR target / -1 ATR stop, 8 weeks max hold.
@@ -29,13 +30,18 @@ def build_position_frame(
     scale_atr: float = DEFAULT_POSITION_SCALE,
     directions: tuple[str, ...] = ("long", "short"),
     benchmark: BarWindow | None = None,
+    use_fundamentals: bool = True,
 ) -> pd.DataFrame:
-    """Labeled position-event frame for one symbol. Empty if no data/structure."""
+    """Labeled position-event frame for one symbol. Empty if no data/structure.
+
+    Fundamental features are joined AS OF each event's date (causal); pass
+    use_fundamentals=False for a pure price+RS frame."""
     window = build_weekly_window(client, symbol, lookback_days)
     if window is None:
         return pd.DataFrame()
     bench_close = align_benchmark(window, benchmark) if benchmark is not None else None
-    events = extract_position_events(window, scale_atr, bench_close)
+    funda = FundamentalSeries.from_client(client, symbol) if use_fundamentals else None
+    events = extract_position_events(window, scale_atr, bench_close, fundamentals=funda)
     if not events:
         return pd.DataFrame()
     rows = label_events(window, events, bracket, directions=directions, horizon=bracket.max_bars)

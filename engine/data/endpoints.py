@@ -163,7 +163,21 @@ _ENDPOINTS: Final[tuple[Endpoint, ...]] = (
         key="earnings_symbol",
         path="earnings",
         min_tier=Tier.PREMIUM,
-        description="Per-symbol earnings history (actual vs estimate).",
+        description="Per-symbol earnings history (actual vs estimate, by announce date).",
+    ),
+    Endpoint(
+        key="income_statement",
+        path="income-statement",
+        min_tier=Tier.PREMIUM,
+        description="Income statements. Carries acceptedDate (the AS-OF date) — use "
+        "it, never the fiscal period end, to avoid fundamental lookahead.",
+    ),
+    Endpoint(
+        key="delisted_companies",
+        path="delisted-companies",
+        min_tier=Tier.PREMIUM,
+        symbol_param=None,
+        description="Delisted tickers + delist date. Survivorship-bias-free universe.",
     ),
     Endpoint(
         key="analyst_estimates",

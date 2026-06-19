@@ -35,6 +35,12 @@ class UniverseMember:
     inverse_of: str | None = None
     # Signed daily leverage: SQQQ -3, TQQQ +3, SH -1, plain 1.
     leverage_factor: float = 1.0
+    # Survivorship: delisted names MUST be scannable. Their absence from a screen
+    # is the classic survivorship bias — the losers that died inflate a winners-
+    # only backtest. They still carry data up to their delist date (labels stop
+    # there naturally), so they belong in the universe, flagged.
+    delisted: bool = False
+    delisted_date: str | None = None
 
     @property
     def is_derived(self) -> bool:
@@ -63,3 +69,47 @@ _REGISTRY: dict[str, UniverseMember] = {
 def classify(symbol: str) -> UniverseMember:
     """Universe metadata for a symbol (defaults to a plain single stock)."""
     return _REGISTRY.get(symbol.strip().upper(), UniverseMember(symbol.strip().upper()))
+
+
+def fetch_delisted(client, limit: int = 100) -> list[UniverseMember]:
+    """Delisted tickers (with delist date), flagged. Include these in a screen so
+    the backtest isn't survivorship-biased toward names that are still alive."""
+    out: list[UniverseMember] = []
+    try:
+        df = client.fetch("delisted_companies", params={"page": 0, "limit": limit})
+    except Exception:
+        return out
+    for _, r in df.iterrows():
+        sym = str(r.get("symbol", "")).strip().upper()
+        if not sym:
+            continue
+        base = classify(sym)
+        out.append(
+            UniverseMember(
+                symbol=sym,
+                instrument_type=base.instrument_type,
+                inverse_of=base.inverse_of,
+                leverage_factor=base.leverage_factor,
+                delisted=True,
+                delisted_date=(str(r["delistedDate"]) if r.get("delistedDate") else None),
+            )
+        )
+    return out
+
+
+def build_universe(
+    symbols: list[str], client=None, include_delisted: bool = False, delisted_limit: int = 100
+) -> list[UniverseMember]:
+    """Assemble a scannable universe. With include_delisted (and a client), append
+    recently-delisted names so the screen is survivorship-bias-free. NOTE: this is
+    the inclusion hook; full POINT-IN-TIME index reconstitution (membership as of a
+    historical date) is the deeper data layer and is not done here — but scanning
+    only survivors is the bias to avoid, and this lets you not do that."""
+    members = [classify(s) for s in symbols]
+    seen = {m.symbol for m in members}
+    if include_delisted and client is not None:
+        for m in fetch_delisted(client, limit=delisted_limit):
+            if m.symbol not in seen:
+                members.append(m)
+                seen.add(m.symbol)
+    return members

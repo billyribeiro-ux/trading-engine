@@ -80,9 +80,12 @@ def extract_position_events(
     unit: StructuralUnit,
     scale_atr: float = DEFAULT_POSITION_SCALE,
     bench_close: np.ndarray | None = None,
+    fundamentals=None,
 ) -> list[EventFeatures]:
     """Every completed long-term leg as a causal feature vector (decision bar =
-    confirmation). RS features added when a benchmark series is supplied."""
+    confirmation). RS added when a benchmark is supplied; fundamental features
+    added AS OF the decision bar's date when a FundamentalSeries is supplied (a
+    report filed after the bar can never be used)."""
     n = len(unit)
     b = unit.bars
     closes = b["close"].to_numpy(dtype=float)
@@ -91,19 +94,21 @@ def extract_position_events(
     for leg in _position_legs(unit, scale_atr):
         idx = min(leg.decision_index, n - 1)
         atr = _causal_atr(unit, idx)
+        event_time = (
+            leg.confirmed_time if leg.confirmed_time is not None else pd.Timestamp(times[idx])
+        )
+        feats = _position_features(unit, leg, idx, atr, bench_close)
+        if fundamentals is not None:
+            feats.update(fundamentals.asof(event_time))  # as-of join — causal
         out.append(
             EventFeatures(
                 symbol=unit.symbol,
                 date=unit.date,
                 event_type="position_leg",
                 event_index=idx,
-                event_time=(
-                    leg.confirmed_time
-                    if leg.confirmed_time is not None
-                    else pd.Timestamp(times[idx])
-                ),
+                event_time=event_time,
                 event_price=float(closes[idx]),
-                features=_position_features(unit, leg, idx, atr, bench_close),
+                features=feats,
             )
         )
     out.sort(key=lambda e: e.event_index)

@@ -18,6 +18,7 @@ from ..ml.features import _causal_atr
 from ..ml.signals import ScannerConfig, ScorableEvent
 from .dataset import POSITION_BRACKET, build_position_frame
 from .features import DEFAULT_POSITION_SCALE, extract_position_events
+from .fundamentals import FundamentalSeries
 from .window import align_benchmark, build_weekly_window
 
 
@@ -27,20 +28,28 @@ def portfolio_config(
     benchmark: str = "SPY",
     scale_atr: float = DEFAULT_POSITION_SCALE,
     recent_bars: int = 4,
+    use_fundamentals: bool = True,
     **overrides: object,
 ) -> ScannerConfig:
     """A ScannerConfig wired to the weekly portfolio layer.
 
-    `benchmark` drives relative-strength features (fetched once). `recent_bars`:
-    only positions whose leg confirmed within the last few weeks are emitted as
-    current signals. Gate defaults are looser still (multi-year weekly windows
-    yield the fewest events); cost is small on multi-week holds.
+    `benchmark` drives relative-strength features (fetched once). Fundamentals are
+    joined as-of each event date (set use_fundamentals=False for price+RS only).
+    `recent_bars`: only positions whose leg confirmed within the last few weeks
+    are emitted as current signals. Gate defaults are looser still (multi-year
+    weekly windows yield the fewest events); cost is small on multi-week holds.
     """
     bench_window = build_weekly_window(client, benchmark, lookback_days)
 
     def frame_builder(sym: str):
         return build_position_frame(
-            client, sym, lookback_days, POSITION_BRACKET, scale_atr, benchmark=bench_window
+            client,
+            sym,
+            lookback_days,
+            POSITION_BRACKET,
+            scale_atr,
+            benchmark=bench_window,
+            use_fundamentals=use_fundamentals,
         )
 
     def current_provider(sym: str) -> list[ScorableEvent]:
@@ -48,9 +57,10 @@ def portfolio_config(
         if window is None:
             return []
         bench_close = align_benchmark(window, bench_window) if bench_window is not None else None
+        funda = FundamentalSeries.from_client(client, sym) if use_fundamentals else None
         n = len(window)
         out: list[ScorableEvent] = []
-        for ev in extract_position_events(window, scale_atr, bench_close):
+        for ev in extract_position_events(window, scale_atr, bench_close, fundamentals=funda):
             if ev.event_index < n - recent_bars:
                 continue
             out.append(
