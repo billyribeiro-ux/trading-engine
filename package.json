@@ -1,0 +1,16 @@
+{
+	"name": "trading-engine",
+	"private": true,
+	"packageManager": "pnpm@11.8.0",
+	"engines": {
+		"pnpm": ">=11"
+	},
+	"scripts": {
+		"preinstall": "node -e \"if(!(process.env.npm_config_user_agent||'').startsWith('pnpm')){console.error('\\nThis project uses pnpm. Run: corepack enable && pnpm install\\n');process.exit(1)}\"",
+		"dev": "pnpm -C frontend dev",
+		"dev:all": "pnpm -C frontend dev:all",
+		"build": "pnpm -C frontend build",
+		"check": "pnpm -C frontend check",
+		"install:frontend": "pnpm -C frontend install"
+	}
+}
