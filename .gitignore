@@ -29,6 +29,8 @@ node_modules/
 # pnpm is the only package manager — keep npm/yarn lockfiles out of the repo.
 package-lock.json
 yarn.lock
+# the root package.json has no deps; only frontend/pnpm-lock.yaml is meaningful.
+/pnpm-lock.yaml
 
 # --- editors / os -----------------------------------------------------------
 .DS_Store
