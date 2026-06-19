@@ -3,6 +3,22 @@
 	import DissectionView from "$lib/components/DissectionView.svelte";
 	import JournalView from "$lib/components/JournalView.svelte";
 	import type { Dissection, ScreenResponse } from "$lib/types";
+	import {
+		CalendarBlankIcon,
+		ChartBarIcon,
+		ChartLineUpIcon,
+		CrosshairIcon,
+		FlaskIcon,
+		FunnelIcon,
+		GaugeIcon,
+		ListChecksIcon,
+		MagnifyingGlassIcon,
+		SlidersHorizontalIcon,
+		StackIcon,
+		TimerIcon,
+		TrendDownIcon,
+		TrendUpIcon
+	} from "phosphor-svelte";
 
 	const LOOKBACK_DEFAULT: Record<string, number> = { intraday: 60, swing: 730, portfolio: 1825 };
 
@@ -77,7 +93,10 @@
 <svelte:head><title>Trading Engine — Scanner</title></svelte:head>
 
 <main>
-	<h1>Trading Engine <span class="sub">scanner</span></h1>
+	<h1>
+		<ChartLineUpIcon weight="duotone" size="1.4em" />
+		Trading Engine <span class="sub">scanner</span>
+	</h1>
 
 	<form
 		class="controls"
@@ -87,7 +106,7 @@
 		}}
 	>
 		<label>
-			Scanner
+			<span class="lbl"><FunnelIcon size={13} /> Scanner</span>
 			<select bind:value={scanner} onchange={onScannerChange}>
 				<option value="intraday">intraday</option>
 				<option value="swing">swing</option>
@@ -95,16 +114,16 @@
 			</select>
 		</label>
 		<label class="grow">
-			Watchlist
+			<span class="lbl"><StackIcon size={13} /> Watchlist</span>
 			<input bind:value={watchlist} placeholder="TSLA, NVDA, AAPL" />
 		</label>
 		<label>
-			Lookback (days)
+			<span class="lbl"><CalendarBlankIcon size={13} /> Lookback (days)</span>
 			<input type="number" min="5" max="3650" bind:value={lookbackDays} />
 		</label>
 		{#if scanner === "intraday"}
 			<label>
-				Timeframe
+				<span class="lbl"><TimerIcon size={13} /> Timeframe</span>
 				<select bind:value={timeframe}>
 					<option>1min</option>
 					<option>5min</option>
@@ -114,7 +133,7 @@
 				</select>
 			</label>
 			<label>
-				Style
+				<span class="lbl"><SlidersHorizontalIcon size={13} /> Style</span>
 				<select bind:value={style}>
 					<option value="reversal">reversal</option>
 					<option value="scalp">scalp</option>
@@ -122,14 +141,15 @@
 			</label>
 		{/if}
 		<label>
-			Min prob
+			<span class="lbl"><GaugeIcon size={13} /> Min prob</span>
 			<input type="number" min="0.5" max="0.99" step="0.01" bind:value={probaThreshold} />
 		</label>
 		<label>
-			FDR
+			<span class="lbl"><FlaskIcon size={13} /> FDR</span>
 			<input type="number" min="0.01" max="0.5" step="0.01" bind:value={fdr} />
 		</label>
 		<button type="submit" disabled={screening || !symbols.length}>
+			<MagnifyingGlassIcon size={16} weight="bold" />
 			{screening ? "Screening…" : "Run screen"}
 		</button>
 	</form>
@@ -140,6 +160,7 @@
 
 	{#if result}
 		<p class="summary">
+			<ListChecksIcon size={15} />
 			{result.summary.configs_evaluated} configs evaluated · {result.summary.survived} survived ·
 			<b>{result.summary.n_signals} signals</b>
 		</p>
@@ -165,9 +186,20 @@
 					{#each result.signals as s, i (i)}
 						<tr class:active={selected === s.symbol}>
 							<td>
-								<button class="link" onclick={() => openDissection(s.symbol)}>{s.symbol}</button>
+								<button class="link" onclick={() => openDissection(s.symbol)}>
+									<CrosshairIcon size={13} />{s.symbol}
+								</button>
 							</td>
-							<td><span class="dir {s.direction}">{s.direction}</span></td>
+							<td>
+								<span class="dir {s.direction}">
+									{#if s.direction === "long"}
+										<TrendUpIcon size={12} weight="bold" />
+									{:else}
+										<TrendDownIcon size={12} weight="bold" />
+									{/if}
+									{s.direction}
+								</span>
+							</td>
 							<td class="event">{s.event_type}</td>
 							<td class="num">{s.entry.toFixed(2)}</td>
 							<td class="num">{s.stop.toFixed(2)}</td>
@@ -189,7 +221,7 @@
 		{/if}
 
 		<details class="reports">
-			<summary>All evaluated configs ({result.reports.length})</summary>
+			<summary><ChartBarIcon size={14} /> All evaluated configs ({result.reports.length})</summary>
 			<table>
 				<thead>
 					<tr>
@@ -248,10 +280,21 @@
 	h1 {
 		margin: 0;
 		font-size: 1.6rem;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	h1 :global(svg) {
+		color: var(--accent);
 	}
 	h1 .sub {
 		color: var(--muted);
 		font-weight: 300;
+	}
+	.lbl {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
 	}
 	.controls {
 		display: flex;
@@ -291,6 +334,10 @@
 		padding: 0.55rem 1.1rem;
 		font-weight: 600;
 		cursor: pointer;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.4rem;
 	}
 	button[type="submit"]:disabled {
 		opacity: 0.5;
@@ -298,6 +345,10 @@
 	}
 	.summary {
 		color: var(--muted);
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.4rem;
 	}
 	.summary b {
 		color: var(--fg);
@@ -328,12 +379,18 @@
 		cursor: pointer;
 		font: inherit;
 		padding: 0;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
 	}
 	.dir {
 		text-transform: uppercase;
 		font-size: 0.72rem;
 		padding: 0.05rem 0.4rem;
 		border-radius: 4px;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
 	}
 	.dir.long {
 		color: var(--up);
@@ -355,6 +412,9 @@
 	.reports summary {
 		cursor: pointer;
 		color: var(--muted);
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
 	}
 	hr {
 		border: none;

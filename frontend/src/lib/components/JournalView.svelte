@@ -2,6 +2,15 @@
 	import { onMount } from "svelte";
 	import { journal } from "$lib/api";
 	import type { JournalResponse } from "$lib/types";
+	import {
+		ArrowsClockwiseIcon,
+		CheckCircleIcon,
+		ClockIcon,
+		CurrencyDollarIcon,
+		NotebookIcon,
+		TrendDownIcon,
+		TrendUpIcon
+	} from "phosphor-svelte";
 
 	let data = $state<JournalResponse | null>(null);
 	let loading = $state(false);
@@ -26,14 +35,18 @@
 
 <section class="journal">
 	<div class="bar">
-		<h2>Live forward journal</h2>
-		<button onclick={load} disabled={loading}>{loading ? "…" : "Refresh"}</button>
+		<h2><NotebookIcon weight="duotone" size="1.1em" /> Live forward journal</h2>
+		<button onclick={load} disabled={loading}>
+			<ArrowsClockwiseIcon size={14} weight="bold" />
+			{loading ? "…" : "Refresh"}
+		</button>
 	</div>
 
 	{#if error}
 		<p class="error">Journal unavailable: {error}</p>
 	{:else if data}
 		<p class="summary">
+			<CurrencyDollarIcon size={15} />
 			<b>{data.summary.open}</b> open · <b>{data.summary.resolved}</b> resolved · realized
 			<b>{sign(data.summary.realized_mean_r)}R</b> (hit {(data.summary.realized_hit_rate * 100).toFixed(0)}%)
 			· validated <b>{sign(data.summary.validated_edge_r)}R</b>
@@ -57,12 +70,30 @@
 					{#each data.entries as e, i (i)}
 						<tr>
 							<td>{e.symbol}</td>
-							<td><span class="dir {e.direction}">{e.direction}</span></td>
+							<td>
+								<span class="dir {e.direction}">
+									{#if e.direction === "long"}
+										<TrendUpIcon size={12} weight="bold" />
+									{:else}
+										<TrendDownIcon size={12} weight="bold" />
+									{/if}
+									{e.direction}
+								</span>
+							</td>
 							<td class="num">{e.entry.toFixed(2)}</td>
 							<td class="num">{e.stop.toFixed(2)}</td>
 							<td class="num">{e.target.toFixed(2)}</td>
 							<td class="num">{(e.probability * 100).toFixed(0)}%</td>
-							<td><span class="status {e.status}">{e.status}</span></td>
+							<td>
+								<span class="status {e.status}">
+									{#if e.status === "resolved"}
+										<CheckCircleIcon size={12} weight="fill" />
+									{:else}
+										<ClockIcon size={12} />
+									{/if}
+									{e.status}
+								</span>
+							</td>
 							<td class="num">{e.realized_r === undefined ? "—" : sign(e.realized_r)}</td>
 							<td>{e.exit_reason ?? "—"}</td>
 						</tr>
@@ -91,6 +122,12 @@
 	.bar h2 {
 		margin: 0;
 		font-size: 1.1rem;
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+	}
+	.bar h2 :global(svg) {
+		color: var(--accent);
 	}
 	button {
 		background: var(--bg-panel);
@@ -99,9 +136,16 @@
 		border-radius: 6px;
 		padding: 0.3rem 0.8rem;
 		cursor: pointer;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
 	}
 	.summary {
 		color: var(--muted);
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.4rem;
 	}
 	.summary b {
 		color: var(--fg);
@@ -125,12 +169,20 @@
 	.dir {
 		text-transform: uppercase;
 		font-size: 0.72rem;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
 	}
 	.dir.long {
 		color: var(--up);
 	}
 	.dir.short {
 		color: var(--down);
+	}
+	.status {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
 	}
 	.status.open {
 		color: var(--accent);

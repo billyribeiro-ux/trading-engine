@@ -1,5 +1,15 @@
 <script lang="ts">
 	import type { Dissection } from "$lib/types";
+	import {
+		CrosshairIcon,
+		PulseIcon,
+		ScalesIcon,
+		StackIcon,
+		TargetIcon,
+		TrendDownIcon,
+		TrendUpIcon,
+		WarningCircleIcon
+	} from "phosphor-svelte";
 
 	let { dissection }: { dissection: Dissection } = $props();
 	const h = $derived(dissection.header);
@@ -8,7 +18,7 @@
 <section class="dissection">
 	<header class="head">
 		<div class="title">
-			<h2>{dissection.symbol}</h2>
+			<h2><CrosshairIcon weight="duotone" size="1em" /> {dissection.symbol}</h2>
 			<span class="date">{dissection.date}</span>
 			<span class="bias">{h.bias}</span>
 		</div>
@@ -21,7 +31,10 @@
 			<span>VWAP <b>{h.vwap_close}</b></span>
 		</div>
 		{#if !dissection.consistent}
-			<p class="warn">STRUCTURE and LEG ROLES disagree — inconsistent dissection.</p>
+			<p class="warn">
+				<WarningCircleIcon size={15} weight="fill" />
+				STRUCTURE and LEG ROLES disagree — inconsistent dissection.
+			</p>
 		{/if}
 	</header>
 
@@ -31,11 +44,17 @@
 
 	<div class="grid">
 		<div class="panel">
-			<h3>Structure <small>{dissection.structure.length} legs</small></h3>
+			<h3><StackIcon size={15} /> Structure <small>{dissection.structure.length} legs</small></h3>
 			<ol class="legs">
 				{#each dissection.structure as leg (leg.n)}
 					<li>
-						<span class="arrow {leg.direction}">{leg.direction === "up" ? "▲" : "▼"}</span>
+						<span class="arrow {leg.direction}">
+							{#if leg.direction === "up"}
+								<TrendUpIcon size={13} weight="bold" />
+							{:else}
+								<TrendDownIcon size={13} weight="bold" />
+							{/if}
+						</span>
 						<span class="time">{leg.start_time}→{leg.end_time}</span>
 						<span class="px">{leg.start_price} → {leg.end_price}</span>
 						<span class="mag">{leg.magnitude} pts</span>
@@ -48,11 +67,17 @@
 		</div>
 
 		<div class="panel">
-			<h3>Leg roles</h3>
+			<h3><ScalesIcon size={15} /> Leg roles</h3>
 			<ol class="legs">
 				{#each dissection.leg_roles as role (role.n)}
 					<li>
-						<span class="arrow {role.direction}">{role.direction === "up" ? "▲" : "▼"}</span>
+						<span class="arrow {role.direction}">
+							{#if role.direction === "up"}
+								<TrendUpIcon size={13} weight="bold" />
+							{:else}
+								<TrendDownIcon size={13} weight="bold" />
+							{/if}
+						</span>
 						<span class="atr">{role.magnitude_atr} ATR</span>
 						<span class="vwap">VWAP {role.vwap_start}→{role.vwap_end}</span>
 						<span class="roles">{role.roles.join(", ")}</span>
@@ -62,7 +87,7 @@
 		</div>
 
 		<div class="panel">
-			<h3>VWAP map</h3>
+			<h3><PulseIcon size={15} /> VWAP map</h3>
 			{#if dissection.vwap_map.length}
 				<ul class="events">
 					{#each dissection.vwap_map as e, i (i)}
@@ -79,7 +104,7 @@
 		</div>
 
 		<div class="panel">
-			<h3>Key levels</h3>
+			<h3><TargetIcon size={15} /> Key levels</h3>
 			{#if dissection.levels.length}
 				<ul class="events">
 					{#each dissection.levels as lv, i (i)}
@@ -112,6 +137,12 @@
 	.head h2 {
 		margin: 0;
 		font-size: 1.4rem;
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+	}
+	.head h2 :global(svg) {
+		color: var(--accent);
 	}
 	.date {
 		color: var(--muted);
@@ -143,6 +174,9 @@
 	.warn {
 		color: var(--down);
 		font-size: 0.85rem;
+		display: flex;
+		align-items: center;
+		gap: 0.3rem;
 	}
 	.grid {
 		display: grid;
@@ -158,6 +192,9 @@
 	.panel h3 {
 		margin: 0 0 0.5rem;
 		font-size: 0.95rem;
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
 	}
 	.panel h3 small {
 		color: var(--muted);
@@ -179,6 +216,10 @@
 		display: flex;
 		gap: 0.6rem;
 		align-items: baseline;
+	}
+	.arrow {
+		display: inline-flex;
+		align-items: center;
 	}
 	.arrow.up {
 		color: var(--up);
