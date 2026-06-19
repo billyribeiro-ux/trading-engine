@@ -136,7 +136,8 @@ def _expected_folds(n_sessions: int, cfg: WalkForwardConfig):
     for f in range(cfg.n_folds):
         oos_start = base + f * fold_size
         oos_end = oos_start + fold_size if f < cfg.n_folds - 1 else n_sessions
-        is_end = max(0, oos_start - cfg.purge_sessions)
+        # Mirror the engine: IS guard band is purge + embargo before each OOS.
+        is_end = max(0, oos_start - cfg.purge_sessions - cfg.embargo_sessions)
         out.append((f, oos_start, oos_end, is_end))
     return base, fold_size, out
 
@@ -186,7 +187,7 @@ def test_purge_gap_separates_is_tail_from_oos_start():
     cfg = WalkForwardConfig(
         n_folds=5,
         purge_sessions=1,
-        embargo_sessions=1,
+        embargo_sessions=0,  # isolate purge: is_end == oos_start - purge
         min_is_sessions=20,
         min_oos_events=1,
     )
@@ -250,7 +251,9 @@ def test_purge_actually_excludes_a_poison_session_from_pooled_is():
     purge-dropped boundary session. We poison session 20. It legitimately re-enters
     LATER folds' IS (it is past data for them), so we isolate the purge by checking
     fold 0's own is_net_expectancy_r, not the pooled IS."""
-    cfg = WalkForwardConfig(n_folds=5, purge_sessions=1, min_is_sessions=20, min_oos_events=1)
+    cfg = WalkForwardConfig(
+        n_folds=5, purge_sessions=1, embargo_sessions=0, min_is_sessions=20, min_oos_events=1
+    )
     n_sessions = 26
     _, _, expected = _expected_folds(n_sessions, cfg)
     fold0_oos_start = expected[0][1]  # first OOS session index (== 21)
@@ -293,26 +296,14 @@ def test_no_fold_uses_its_own_oos_sessions_in_sample():
 
 
 # ============================================================================
-# NO-LOOKAHEAD: EMBARGO. Documented + configured but NOT implemented.
+# NO-LOOKAHEAD: EMBARGO. Widens the pre-OOS guard band (purge + embargo).
 # ============================================================================
-@pytest.mark.xfail(
-    reason=(
-        "ENGINE BUG: embargo_sessions is documented (module docstring + "
-        "WalkForwardConfig comment 'sessions skipped after each OOS fold') and "
-        "configurable, but `_walk_forward_one` never references it. The IS window "
-        "for fold f is sessions[0 : oos_start - purge_sessions] regardless of "
-        "embargo, so an OOS fold's sessions re-enter the very next fold's IS "
-        "window with NO embargo gap. de Prado embargo leakage guard is absent. "
-        "Evidence: grep 'embargo' walkforward.py -> only docstring/comment/config."
-    ),
-    strict=False,
-)
-def test_embargo_gap_is_honored_between_oos_and_next_is():
-    """After fold f's OOS block ends, fold f+1's IS window should resume only
-    after an embargo gap of `embargo_sessions`. Construct a case where a large
-    embargo MUST shrink the later folds' IS windows relative to a zero embargo.
-    If embargo were implemented, embargo=3 would yield strictly smaller IS counts
-    on folds >= 1 than embargo=0. It does not, so this xfails."""
+def test_embargo_widens_the_is_guard_band():
+    """The IS window ends purge + embargo sessions before each OOS block, so a
+    larger embargo strictly shrinks later folds' IS windows. (In this expanding,
+    within-session-resolving walk-forward the embargo isolates the prior-day-level
+    channel across the IS/OOS boundary rather than trailing the OOS block.)
+    embargo=3 must yield strictly smaller IS counts on folds >= 1 than embargo=0."""
     n_sessions = 40
     net = {i: 1.0 for i in range(n_sessions)}
     outs = _build_outcomes(net, events_per_session=3)
@@ -338,10 +329,8 @@ def test_embargo_gap_is_honored_between_oos_and_next_is():
 
     later = [f for f in (set(by0) & set(by3)) if f >= 1]
     assert later, "need folds >= 1 to observe an embargo effect"
-    # A real embargo on fold f>=1 would EXCLUDE the embargo_sessions immediately
-    # after the prior OOS fold from this fold's IS window -> strictly fewer IS
-    # sessions. We assert that here; the engine ignores embargo so IS is identical
-    # and this assertion fails (xfail).
+    # embargo widens the pre-OOS guard band, so fold f>=1 has strictly fewer IS
+    # sessions under embargo=3 than embargo=0.
     assert any(by3[f].is_sessions < by0[f].is_sessions for f in later), (
         "embargo_sessions had NO effect on any later fold's IS window count -> "
         "the embargo leakage guard is not implemented"

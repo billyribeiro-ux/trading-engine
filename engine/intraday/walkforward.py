@@ -21,9 +21,13 @@ session-level events:
                boundary, and we additionally drop the last `purge_sessions`
                in-sample sessions before each OOS fold so an event near the
                boundary cannot leak.
-    EMBARGO -- after each OOS fold, skip `embargo_sessions` before the next
-               in-sample window resumes, preventing serial-correlation leakage
-               from OOS back into subsequent in-sample measurement.
+    EMBARGO -- widen the in-sample guard band before each OOS fold by
+               `embargo_sessions` (on top of purge). Outcomes resolve within
+               their own session, so the only cross-session channel is prior-day
+               levels (session N feeds N+1's prior-day high/low/close); a textbook
+               post-test embargo has nothing to act on in an expanding window, so
+               the sound equivalent is a wider pre-OOS isolation band. The IS
+               window thus ends purge + embargo sessions before each OOS block.
 
 The output reports in-sample vs out-of-sample net expectancy side by side. A
 large IS->OOS decay is the signal that an edge is overfit. A scenario whose OOS
@@ -46,7 +50,7 @@ from .backtest import SignalOutcome
 class WalkForwardConfig:
     n_folds: int = 5  # number of OOS folds
     purge_sessions: int = 1  # IS sessions dropped before each OOS fold
-    embargo_sessions: int = 1  # sessions skipped after each OOS fold
+    embargo_sessions: int = 1  # extra IS guard-band sessions before each OOS (on top of purge)
     min_is_sessions: int = 20  # minimum in-sample sessions to measure on
     min_oos_events: int = 10  # minimum OOS events for a usable fold
 
@@ -150,8 +154,12 @@ def _walk_forward_one(
         if not oos_sessions:
             continue
 
-        # In-sample = everything before oos_start, minus the purge tail.
-        is_end = max(0, oos_start - cfg.purge_sessions)
+        # In-sample = everything before oos_start, minus a guard band of
+        # purge + embargo sessions (see module docstring: in an expanding,
+        # within-session-resolving walk-forward the embargo widens the pre-OOS
+        # isolation band rather than trailing the OOS block). Larger embargo =>
+        # stricter isolation of the prior-day-level channel across the boundary.
+        is_end = max(0, oos_start - cfg.purge_sessions - cfg.embargo_sessions)
         is_sessions = sessions[:is_end]
         if len(is_sessions) < cfg.min_is_sessions:
             continue
