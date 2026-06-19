@@ -100,6 +100,11 @@
 		</div>
 	</div>
 
+	<p class="hint">
+		<b>Scan</b> generates today's signals from the validated pooled edge (GBT swing-long).
+		<b>Resolve</b> settles open trades against new bars. (Takes ~a minute.)
+	</p>
+
 	{#if actionMsg}
 		<p class="action-msg">{actionMsg}</p>
 	{/if}
@@ -218,6 +223,14 @@
 		margin: 0;
 		font-size: 0.8rem;
 		color: var(--accent);
+	}
+	.hint {
+		margin: 0;
+		font-size: 0.78rem;
+		color: var(--muted);
+	}
+	.hint b {
+		color: var(--fg);
 	}
 	.summary {
 		color: var(--muted);

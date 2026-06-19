@@ -129,7 +129,7 @@
 	>
 		<label>
 			<span class="lbl"><FunnelIcon size={13} /> Scanner</span>
-			<select bind:value={scanner} onchange={onScannerChange}>
+			<select name="scanner" bind:value={scanner} onchange={onScannerChange}>
 				<option value="intraday">intraday</option>
 				<option value="swing">swing</option>
 				<option value="portfolio">portfolio</option>
@@ -137,16 +137,16 @@
 		</label>
 		<label class="grow">
 			<span class="lbl"><StackIcon size={13} /> Watchlist</span>
-			<input bind:value={watchlist} placeholder="TSLA, NVDA, AAPL" />
+			<input name="watchlist" bind:value={watchlist} placeholder="TSLA, NVDA, AAPL" />
 		</label>
 		<label>
 			<span class="lbl"><CalendarBlankIcon size={13} /> Lookback (days)</span>
-			<input type="number" min="5" max="3650" bind:value={lookbackDays} />
+			<input name="lookback" type="number" min="5" max="3650" bind:value={lookbackDays} />
 		</label>
 		{#if scanner === "intraday"}
 			<label>
 				<span class="lbl"><TimerIcon size={13} /> Timeframe</span>
-				<select bind:value={timeframe}>
+				<select name="timeframe" bind:value={timeframe}>
 					<option>1min</option>
 					<option>5min</option>
 					<option>15min</option>
@@ -156,7 +156,7 @@
 			</label>
 			<label>
 				<span class="lbl"><SlidersHorizontalIcon size={13} /> Style</span>
-				<select bind:value={style}>
+				<select name="style" bind:value={style}>
 					<option value="reversal">reversal</option>
 					<option value="scalp">scalp</option>
 				</select>
@@ -164,11 +164,11 @@
 		{/if}
 		<label>
 			<span class="lbl"><GaugeIcon size={13} /> Min prob</span>
-			<input type="number" min="0.5" max="0.99" step="0.01" bind:value={probaThreshold} />
+			<input name="proba" type="number" min="0.5" max="0.99" step="0.01" bind:value={probaThreshold} />
 		</label>
 		<label>
 			<span class="lbl"><FlaskIcon size={13} /> FDR</span>
-			<input type="number" min="0.01" max="0.5" step="0.01" bind:value={fdr} />
+			<input name="fdr" type="number" min="0.01" max="0.5" step="0.01" bind:value={fdr} />
 		</label>
 		<button type="submit" disabled={screening || !symbols.length}>
 			<MagnifyingGlassIcon size={16} weight="bold" />
@@ -243,8 +243,9 @@
 			</table>
 		{:else}
 			<p class="muted">
-				No validated signals — no significant edge survived the screen. That is a correct, honest
-				result.
+				No <b>per-symbol</b> signals — single names rarely clear the edge gate (expected: the
+				validated edge is cross-symbol, not per-name). For today's tradeable signals press
+				<b>⚡ Scan</b> in the Live forward journal below — it runs the validated pooled model.
 			</p>
 		{/if}
 
