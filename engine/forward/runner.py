@@ -86,6 +86,7 @@ def forward_test(
         horizon_bars=horizon_bars,
         proba_threshold=proba_threshold,
         cost_r=cost_r,
+        model_kind=model_kind,
         seed=seed,
     )
 

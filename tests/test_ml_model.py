@@ -93,3 +93,19 @@ def test_planted_edge_detected_through_nan_columns():
     assert rep.p_value < 0.05, f"planted edge missed through NaN columns (p={rep.p_value})"
     assert rep.oos_auc > 0.60, rep.oos_auc
     assert rep.oos_net_expectancy_r > 0.0
+
+
+def test_gbt_model_is_finite_handles_nan_and_single_class():
+    """The optional GBT (sklearn HistGBT) consumes NaN natively, returns finite
+    probabilities, and degrades gracefully on a single-class fit."""
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(200, 3))
+    X[:100, 1] = np.nan  # heterogeneous (type-specific) features
+    y = (X[:, 0] + rng.normal(0, 0.5, size=200) > 0).astype(int)
+    m = make_model("gbt", names=FEATURE_COLS).fit(X, y)
+    p = m.predict_proba(X)
+    assert np.isfinite(p).all() and ((p >= 0) & (p <= 1)).all()
+    assert m.feature_names == FEATURE_COLS
+    # single-class training must not raise.
+    m2 = make_model("gbt").fit(X, np.ones(200, dtype=int))
+    assert np.isfinite(m2.predict_proba(X)).all()

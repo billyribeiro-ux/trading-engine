@@ -124,8 +124,68 @@ class LogisticModel:
         return {n: float(c) for n, c in zip(names, self.w_)}
 
 
+@dataclass
+class GBTModel:
+    """Gradient-boosted trees behind the same SignalModel interface (research).
+
+    Wraps sklearn's HistGradientBoostingClassifier, which handles NaN natively —
+    so it consumes the heterogeneous event features with no imputation. It is an
+    OPTIONAL model (the `ml` extra); the core install stays numpy-only. The
+    forward-test gate judges it exactly like the logistic — a more expressive
+    model that overfits in-sample will simply show larger forward decay and not be
+    promoted. Defaults are conservative (shallow, regularized) for small data.
+    """
+
+    names: list[str] = field(default_factory=list)
+    max_depth: int = 3
+    learning_rate: float = 0.05
+    max_iter: int = 200
+    l2_regularization: float = 1.0
+    min_samples_leaf: int = 20
+    seed: int = 0
+    clf_: object = None
+    const_: float | None = None
+
+    @property
+    def feature_names(self) -> list[str]:
+        return self.names
+
+    def fit(self, X: np.ndarray, y: np.ndarray) -> GBTModel:
+        try:
+            from sklearn.ensemble import HistGradientBoostingClassifier
+        except ImportError as exc:  # pragma: no cover - exercised only without the extra
+            raise ImportError(
+                "GBTModel needs scikit-learn — install the ml extra: `uv sync --extra ml`"
+            ) from exc
+        y = np.asarray(y).astype(int)
+        if np.unique(y).size < 2:  # HistGBT errors on a single class; degrade gracefully
+            self.const_ = float(y.mean()) if y.size else 0.5
+            self.clf_ = None
+            return self
+        clf = HistGradientBoostingClassifier(
+            max_depth=self.max_depth,
+            learning_rate=self.learning_rate,
+            max_iter=self.max_iter,
+            l2_regularization=self.l2_regularization,
+            min_samples_leaf=self.min_samples_leaf,
+            random_state=self.seed,
+        )
+        clf.fit(np.asarray(X, dtype=float), y)  # NaN handled internally
+        self.clf_ = clf
+        self.const_ = None
+        return self
+
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
+        Xa = np.asarray(X, dtype=float)
+        if self.clf_ is None:
+            return np.full(len(Xa), 0.5 if self.const_ is None else self.const_)
+        return self.clf_.predict_proba(Xa)[:, 1]
+
+
 def make_model(kind: str = "logistic", names: list[str] | None = None, **kw):
     """Factory so the harness/scanner request models by name, not class."""
     if kind == "logistic":
         return LogisticModel(names=names or [], **kw)
+    if kind == "gbt":
+        return GBTModel(names=names or [], **kw)
     raise ValueError(f"unknown model kind: {kind}")
