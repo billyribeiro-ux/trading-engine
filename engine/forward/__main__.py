@@ -21,7 +21,7 @@ _DEFAULT_UNIVERSE = "AAPL,MSFT,NVDA,AMZN,META,GOOGL,KO,PEP,DIS,CSCO,INTC,ORCL,CR
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="engine.forward")
-    p.add_argument("action", choices=["scan", "resolve", "report"])
+    p.add_argument("action", choices=["scan", "resolve", "report", "gauntlet"])
     p.add_argument("--symbols", default=_DEFAULT_UNIVERSE)
     p.add_argument("--scanner", default="swing", choices=["intraday", "swing", "portfolio"])
     p.add_argument("--model", default="gbt", choices=["logistic", "gbt"])
@@ -32,7 +32,7 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
 
     from .journal import SignalJournal
-    from .live import _DEFAULT_JOURNAL, LiveConfig, resolve, scan_and_log
+    from .live import _DEFAULT_JOURNAL, LiveConfig, _config_for, resolve, scan_and_log
 
     jpath = Path(args.journal).expanduser() if args.journal else _DEFAULT_JOURNAL
     journal = SignalJournal(jpath)
@@ -73,6 +73,12 @@ def main(argv: list[str] | None = None) -> int:
                 f"  {s.symbol:<6} {s.event_type:<14} entry={s.entry:.2f} stop={s.stop:.2f} "
                 f"target={s.target:.2f} R:R={s.rr:.2f} p={s.probability:.2f}"
             )
+    elif args.action == "gauntlet":
+        from .gauntlet import render_gauntlet, run_gauntlet
+
+        config = _config_for(client, live)
+        v = run_gauntlet(live.symbols, config, models=("logistic", "gbt"), direction=live.direction)
+        print(render_gauntlet(v))
     else:  # resolve
         rows = resolve(client, live, journal)
         nres = sum(1 for r in rows if r.get("status") == "resolved")
