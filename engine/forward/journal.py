@@ -132,11 +132,14 @@ class SignalJournal:
     def summary(self, cost_r: float = 0.05) -> ForwardSummary:
         rows = self.entries()
         resolved = [r for r in rows if r.get("status") == "resolved"]
-        n_open = sum(1 for r in rows if r.get("status") != "resolved")
+        n_open = len(rows) - len(resolved)
+        # Carried validated edge across ALL logged signals (informative even before
+        # anything resolves); realized is over resolved trades only.
+        carried = np.array([float(r.get("oos_edge_r", 0.0)) for r in rows], dtype=float)
+        mean_validated = float(carried.mean()) if carried.size else 0.0
         if not resolved:
-            return ForwardSummary(n_open, 0, 0.0, 0.0, 0.0, {})
+            return ForwardSummary(n_open, 0, 0.0, 0.0, mean_validated, {})
         net = np.array([float(r["realized_r"]) - cost_r for r in resolved], dtype=float)
-        validated = np.array([float(r.get("oos_edge_r", 0.0)) for r in resolved], dtype=float)
         by_reason: dict[str, int] = {}
         for r in resolved:
             by_reason[r.get("exit_reason", "?")] = by_reason.get(r.get("exit_reason", "?"), 0) + 1
@@ -145,6 +148,6 @@ class SignalJournal:
             n_resolved=len(resolved),
             realized_mean_r=float(net.mean()),
             realized_hit_rate=float((net > 0).mean()),
-            mean_validated_edge_r=float(validated.mean()),
+            mean_validated_edge_r=mean_validated,
             by_reason=by_reason,
         )
