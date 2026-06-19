@@ -24,6 +24,12 @@ venv/
 htmlcov/
 coverage.xml
 
+# --- node / frontend --------------------------------------------------------
+node_modules/
+# pnpm is the only package manager — keep npm/yarn lockfiles out of the repo.
+package-lock.json
+yarn.lock
+
 # --- editors / os -----------------------------------------------------------
 .DS_Store
 .idea/
