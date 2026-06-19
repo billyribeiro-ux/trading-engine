@@ -30,9 +30,9 @@ from ..intraday.bars import Timeframe
 from ..ml.signals import ScreenResult, batch_rank, intraday_config
 from ..portfolio.scanner import portfolio_config
 from ..session.runner import dissect_real_session
+from ..settings import SettingsStore, mask_key, resolve_api_key
 from ..swing.scanner import swing_config
 from .serialize import dissection_to_dict, screen_to_dict
-from .settings import SettingsStore, mask_key
 
 # A screener maps a request -> ScreenResult; a dissector maps (symbol, tf, date)
 # -> (session, dissection, nested). Both are injected so tests can fake them.
@@ -85,8 +85,7 @@ def get_key_validator() -> KeyValidator:
 
 
 def get_client() -> FMPClient:
-    # A key saved via the dashboard wins; FMP_API_KEY env is the fallback/bootstrap.
-    key = _resolve_store().get_api_key() or os.environ.get("FMP_API_KEY")
+    key = resolve_api_key(_resolve_store())  # saved key wins, FMP_API_KEY env fallback
     if not key:
         raise HTTPException(
             status_code=503, detail="FMP API key not configured — add it in Settings"

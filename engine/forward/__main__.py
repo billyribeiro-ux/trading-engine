@@ -13,7 +13,6 @@ Signals are emitted only if the pooled config STILL passes the forward gate.
 from __future__ import annotations
 
 import argparse
-import os
 from pathlib import Path
 
 _DEFAULT_UNIVERSE = "AAPL,MSFT,NVDA,AMZN,META,GOOGL,KO,PEP,DIS,CSCO,INTC,ORCL,CRM,ADBE,COST,HD"
@@ -65,9 +64,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  exported -> {', '.join(str(p) for p in out)}")
         return 0
 
-    key = os.environ.get("FMP_API_KEY")
+    from ..settings import resolve_api_key
+
+    key = resolve_api_key()
     if not key:
-        print("FMP_API_KEY not set")
+        print("No FMP API key — set FMP_API_KEY or save one in the dashboard Settings.")
         return 2
     from ..data.client import FMPClient
 

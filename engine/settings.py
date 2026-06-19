@@ -1,10 +1,13 @@
 """
-Persisted dashboard settings — the FMP API key today, more later.
+Persisted settings — the FMP API key today, more later.
 
 Stored as JSON at ~/.config/fmp_engine/settings.json (outside the repo, like the
 runtime caches), with 0600 permissions since it holds a secret. The full key is
 never returned over the API — only a masked form. The store is intentionally a
 plain key/value bag so new settings slot in without schema churn.
+
+`resolve_api_key()` is the single source of truth for which key to use — shared by
+the API and every CLI, so a key entered once in the dashboard works everywhere.
 """
 
 from __future__ import annotations
@@ -56,3 +59,11 @@ class SettingsStore:
     def masked_key(self) -> str | None:
         k = self.get_api_key()
         return mask_key(k) if k else None
+
+
+def resolve_api_key(store: SettingsStore | None = None) -> str | None:
+    """The FMP key to use: a key saved via the dashboard WINS; FMP_API_KEY env is
+    the fallback/bootstrap. Shared by the API and every CLI so a key entered once
+    in the dashboard works everywhere."""
+    store = store or SettingsStore()
+    return store.get_api_key() or os.environ.get("FMP_API_KEY")

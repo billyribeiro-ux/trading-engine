@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 import sys
 
 from ..data.client import AuthError, FMPClient, FMPError
@@ -76,9 +75,14 @@ def main(argv: list[str] | None = None) -> int:
         format="%(levelname)s %(name)s: %(message)s",
     )
 
-    api_key = os.environ.get("FMP_API_KEY")
+    from ..settings import resolve_api_key
+
+    api_key = resolve_api_key()
     if not api_key:
-        print("ERROR: set FMP_API_KEY in your environment.", file=sys.stderr)
+        print(
+            "ERROR: no FMP API key — set FMP_API_KEY or save one in the dashboard Settings.",
+            file=sys.stderr,
+        )
         return 2
 
     tf = Timeframe(args.timeframe)

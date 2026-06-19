@@ -186,7 +186,7 @@ def test_journal_endpoint_reports_summary_and_entries(client, tmp_path):
 
 def test_settings_get_unconfigured(client, tmp_path, monkeypatch):
     monkeypatch.delenv("FMP_API_KEY", raising=False)
-    from engine.api.settings import SettingsStore
+    from engine.settings import SettingsStore
 
     app.dependency_overrides[get_settings_store] = lambda: SettingsStore(tmp_path / "s.json")
     r = client.get("/settings")
@@ -196,7 +196,7 @@ def test_settings_get_unconfigured(client, tmp_path, monkeypatch):
 
 def test_settings_post_validates_saves_and_masks(client, tmp_path, monkeypatch):
     monkeypatch.delenv("FMP_API_KEY", raising=False)
-    from engine.api.settings import SettingsStore
+    from engine.settings import SettingsStore
 
     store = SettingsStore(tmp_path / "s.json")
     app.dependency_overrides[get_settings_store] = lambda: store
@@ -213,7 +213,7 @@ def test_settings_post_validates_saves_and_masks(client, tmp_path, monkeypatch):
 
 
 def test_settings_post_rejects_bad_key(client, tmp_path):
-    from engine.api.settings import SettingsStore
+    from engine.settings import SettingsStore
 
     store = SettingsStore(tmp_path / "s.json")
     app.dependency_overrides[get_settings_store] = lambda: store
