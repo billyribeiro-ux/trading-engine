@@ -35,7 +35,7 @@ def _frame(seed: int, *, train_signal: bool, holdout_signal: bool, cut_frac: flo
     return pd.DataFrame(
         {
             "symbol": "TEST",
-            "date": pd.Timestamp("2026-01-01"),
+            "date": pd.Timestamp("2024-01-01") + pd.to_timedelta(np.arange(N), unit="D"),
             "event_index": np.arange(N),
             "f_signal": f_signal,
             "f_n1": rng.normal(size=N),

@@ -85,17 +85,18 @@ def extract_swing_events(
     for leg in _swing_legs(unit, scale_atr):
         idx = min(leg.decision_index, n - 1)
         atr = _causal_atr(unit, idx)
+        event_time = (
+            leg.confirmed_time if leg.confirmed_time is not None else pd.Timestamp(times[idx])
+        )
         out.append(
             EventFeatures(
                 symbol=unit.symbol,
-                date=unit.date,
+                # the EVENT's own bar date (not the window's as-of date) -- needed
+                # for correct time-ordering and the forward day-count.
+                date=pd.Timestamp(event_time).normalize(),
                 event_type="swing_leg",
                 event_index=idx,
-                event_time=(
-                    leg.confirmed_time
-                    if leg.confirmed_time is not None
-                    else pd.Timestamp(times[idx])
-                ),
+                event_time=event_time,
                 event_price=float(closes[idx]),
                 features=_swing_features(unit, leg, idx, atr),
             )

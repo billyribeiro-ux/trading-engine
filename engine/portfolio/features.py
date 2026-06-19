@@ -103,7 +103,9 @@ def extract_position_events(
         out.append(
             EventFeatures(
                 symbol=unit.symbol,
-                date=unit.date,
+                # the EVENT's own bar date (not the window's as-of date) -- needed
+                # for correct time-ordering and the forward day-count.
+                date=pd.Timestamp(event_time).normalize(),
                 event_type="position_leg",
                 event_index=idx,
                 event_time=event_time,

@@ -43,6 +43,7 @@ class ForwardTestResult:
     holdout_auc: float
     forward_decay_r: float  # validated_edge_r - realized_edge_r (overfit gauge)
     persisted: bool
+    n_holdout_days: int = 0  # distinct calendar days in the holdout (independence)
 
 
 def forward_test(
@@ -56,11 +57,18 @@ def forward_test(
     proba_threshold: float = 0.55,
     cost_r: float = 0.05,
     min_holdout_signals: int = 10,
+    min_holdout_days: int = 10,
     n_folds: int = 5,
     model_kind: str = "logistic",
     seed: int = 0,
 ) -> ForwardTestResult:
-    """Out-of-time forward test on a labeled, time-ordered event frame."""
+    """Out-of-time forward test on a labeled, time-ordered event frame.
+
+    `min_holdout_days` guards against the few-days trap: pooled same-day signals
+    are cross-sectionally correlated, so a result over a handful of calendar days
+    is NOT independent and its bootstrap p is wildly overstated (e.g. 'p=0.000 on
+    68 signals' that are really 3 days of market moves). A config must clear BOTH
+    enough signals AND enough distinct holdout days to be `persisted`."""
     symbol = str(df["symbol"].iloc[0]) if "symbol" in df and len(df) else "?"
     empty = ForwardTestResult(symbol, len(df), 0, 0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.5, 0.0, False)
     if df.empty or len(df) < max(40, n_folds * 8):
@@ -106,7 +114,19 @@ def forward_test(
     realized_p = _bootstrap_edge_p(taken_net, holdout_baseline, seed=seed)
     holdout_auc = _auc(yh, p)
 
-    persisted = taken_net.size >= min_holdout_signals and realized_edge > 0.0 and realized_p < 0.10
+    # Distinct calendar days the holdout SIGNALS land on — the real independence
+    # count. Pooled same-day signals across symbols are one correlated bet.
+    if "date" in holdout.columns and take.any():
+        n_days = int(pd.to_datetime(holdout.loc[take, "date"]).dt.normalize().nunique())
+    else:
+        n_days = int(holdout["date"].nunique()) if "date" in holdout.columns else len(holdout)
+
+    persisted = (
+        taken_net.size >= min_holdout_signals
+        and n_days >= min_holdout_days
+        and realized_edge > 0.0
+        and realized_p < 0.10
+    )
     return ForwardTestResult(
         symbol=symbol,
         n_train=len(train),
@@ -120,4 +140,5 @@ def forward_test(
         holdout_auc=holdout_auc,
         forward_decay_r=report.oos_net_expectancy_r - realized_edge,
         persisted=bool(persisted),
+        n_holdout_days=n_days,
     )

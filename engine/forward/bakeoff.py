@@ -57,6 +57,7 @@ def bake_off(
     cost_r: float = 0.05,
     fdr: float = 0.10,
     min_holdout_signals: int = 10,
+    min_holdout_days: int = 10,
     seed: int = 0,
 ) -> list[VersionResult]:
     """Forward-test each version, FDR-correct across versions on the realized
@@ -73,6 +74,7 @@ def bake_off(
             proba_threshold=v.proba_threshold,
             cost_r=cost_r,
             min_holdout_signals=min_holdout_signals,
+            min_holdout_days=min_holdout_days,
             model_kind=v.model_kind,
             seed=seed,
         )
@@ -117,14 +119,14 @@ def render_bakeoff(rows: Sequence[VersionResult]) -> str:
         f"Bake-off: {len(rows)} versions, {len(promoted)} promoted "
         f"(persist forward + survive FDR).",
         f"  {'version':<14}{'model':<10}{'valid_R':>9}{'real_R':>8}{'decay':>8}"
-        f"{'hAUC':>6}{'sig':>5}{'p_fdr':>8}  promoted",
+        f"{'hAUC':>6}{'sig':>5}{'days':>5}{'p_fdr':>8}  promoted",
     ]
     for r in rows:
         t = r.result
         lines.append(
             f"  {r.version:<14}{r.model_kind:<10}{t.validated_edge_r:>+9.3f}"
             f"{t.realized_edge_r:>+8.3f}{t.forward_decay_r:>+8.3f}{t.holdout_auc:>6.2f}"
-            f"{t.n_holdout_signals:>5}{r.p_value_fdr:>8.3f}  {r.promoted}"
+            f"{t.n_holdout_signals:>5}{t.n_holdout_days:>5}{r.p_value_fdr:>8.3f}  {r.promoted}"
         )
     if not promoted:
         lines.append("  -> no version persists forward. Honest null; do not trade.")

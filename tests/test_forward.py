@@ -42,7 +42,7 @@ def _frame(seed: int, *, train_signal: bool, holdout_signal: bool, cut_frac: flo
     return pd.DataFrame(
         {
             "symbol": "TEST",
-            "date": pd.Timestamp("2026-01-01"),
+            "date": pd.Timestamp("2024-01-01") + pd.to_timedelta(np.arange(N), unit="D"),
             "event_index": np.arange(N),
             "f_signal": f_signal,
             "f_n1": rng.normal(size=N),
@@ -74,6 +74,19 @@ def test_decayed_edge_is_caught():
     assert res.validated_edge_r > 0.10, "train edge should look real"
     assert not res.persisted, "a decayed edge must not survive forward testing"
     assert res.forward_decay_r > 0.20, res.forward_decay_r
+
+
+def test_few_holdout_days_blocks_promotion():
+    """A real, persistent edge measured over too FEW distinct calendar days must
+    NOT be promoted — same-day signals are correlated, so a handful of days isn't
+    independent evidence (the pooled-intraday 3-day trap)."""
+    df = _frame(1, train_signal=True, holdout_signal=True).copy()
+    # Collapse to ~9 distinct days so the holdout spans only a few.
+    df["date"] = pd.Timestamp("2024-01-01") + pd.to_timedelta(np.arange(len(df)) // 100, unit="D")
+    res = forward_test(df, FEATS, horizon_bars=2)
+    assert res.realized_edge_r > 0  # the edge itself is real
+    assert res.n_holdout_days < 10
+    assert not res.persisted  # but too few independent days -> not promoted
 
 
 def _signal(**kw) -> Signal:
