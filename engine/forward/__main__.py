@@ -35,6 +35,12 @@ def main(argv: list[str] | None = None) -> int:
         help="gauntlet: append N tradeable delisted US names (survivorship-free)",
     )
     p.add_argument("--journal", default=None)
+    p.add_argument(
+        "--export",
+        default=None,
+        metavar="FILE",
+        help="write results to FILE.csv or FILE.xlsx (extension decides format)",
+    )
     args = p.parse_args(argv)
 
     from .journal import SignalJournal
@@ -52,6 +58,11 @@ def main(argv: list[str] | None = None) -> int:
             f"  carried validated edge_R = {s.mean_validated_edge_r:+.3f}\n"
             f"  exits = {s.by_reason}"
         )
+        if args.export:
+            from ..export import export, journal_to_df
+
+            out = export({"journal": journal_to_df(journal.entries())}, args.export)
+            print(f"  exported -> {', '.join(str(p) for p in out)}")
         return 0
 
     key = os.environ.get("FMP_API_KEY")
@@ -79,7 +90,13 @@ def main(argv: list[str] | None = None) -> int:
                 f"  {s.symbol:<6} {s.event_type:<14} entry={s.entry:.2f} stop={s.stop:.2f} "
                 f"target={s.target:.2f} R:R={s.rr:.2f} p={s.probability:.2f}"
             )
+        if args.export:
+            from ..export import export, signals_to_df
+
+            out = export({"signals": signals_to_df(sigs)}, args.export)
+            print(f"exported -> {', '.join(str(p) for p in out)}")
     elif args.action == "gauntlet":
+        from ..export import export, gauntlet_to_frames
         from .gauntlet import render_gauntlet, run_gauntlet
         from .pooled import tradeable_delisted
 
@@ -91,6 +108,9 @@ def main(argv: list[str] | None = None) -> int:
             syms += extra
         v = run_gauntlet(syms, config, models=("logistic", "gbt"), direction=live.direction)
         print(render_gauntlet(v))
+        if args.export:
+            out = export(gauntlet_to_frames(v), args.export)
+            print(f"exported -> {', '.join(str(p) for p in out)}")
     else:  # resolve
         rows = resolve(client, live, journal)
         nres = sum(1 for r in rows if r.get("status") == "resolved")

@@ -17,6 +17,7 @@ dependencies = [
     "pyarrow>=14.0",
     "scipy>=1.11",
     "statsmodels>=0.14",
+    "openpyxl>=3.1",
 ]
 
 [project.scripts]
