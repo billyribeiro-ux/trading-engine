@@ -21,8 +21,8 @@ uv sync --extra api --extra ml            # Python engine + API + research model
 cd frontend && pnpm install && cd ..      # frontend (pnpm only — npm is blocked)
 
 # start everything (API :8000 + dashboard :5173); Ctrl-C stops both
-./scripts/dev.sh
-# (or run the two halves manually: `uv run engine-api` and `cd frontend && pnpm run dev`)
+cd frontend && pnpm dev:all
+# frontend only: `pnpm dev`   |   backend only: `uv run engine-api`
 ```
 
 Open the dashboard → **gear icon → paste FMP key → Validate & save** (no env var
