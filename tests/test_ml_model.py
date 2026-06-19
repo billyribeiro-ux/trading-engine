@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from engine.ml.model import StandardScaler, make_model
 from engine.ml.validate import walk_forward_validate
@@ -109,3 +110,25 @@ def test_gbt_model_is_finite_handles_nan_and_single_class():
     # single-class training must not raise.
     m2 = make_model("gbt").fit(X, np.ones(200, dtype=int))
     assert np.isfinite(m2.predict_proba(X)).all()
+
+
+@pytest.mark.parametrize(
+    "kind",
+    ["rf", "extratrees", "gbm", "adaboost", "lda", "qda", "gnb", "knn", "mlp", "tree2", "tree3"],
+)
+def test_model_zoo_finite_and_learns_with_nan(kind):
+    """Every zoo model fits NaN-bearing features, returns valid probabilities, and
+    learns a planted signal (AUC > 0.5). Model-agnostic agreement is the point."""
+    from engine.ml.validate import _auc
+
+    rng = np.random.default_rng(0)
+    n = 400
+    sig = rng.normal(size=n)
+    y = (sig + rng.normal(0, 0.5, n) > 0).astype(int)
+    X = np.column_stack([sig, rng.normal(size=n), rng.normal(size=n)])
+    X[: n // 2, 1] = np.nan  # heterogeneous features
+    tr, te = slice(0, 300), slice(300, n)
+    m = make_model(kind, names=FEATURE_COLS).fit(X[tr], y[tr])
+    p = m.predict_proba(X[te])
+    assert np.isfinite(p).all() and ((p >= 0) & (p <= 1)).all()
+    assert _auc(y[te], p) > 0.5, f"{kind} failed to learn planted signal"
