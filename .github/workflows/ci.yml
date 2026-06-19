@@ -1,0 +1,33 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # Hard-pin Python 3.9 to match the operator's Mac. The engine uses no
+      # 3.10+ syntax; CI is the backstop that keeps it that way.
+      - name: Set up Python 3.9
+        run: uv python install 3.9
+
+      - name: Sync dependencies
+        run: uv sync --dev
+
+      # Offline gate only -- no FMP_API_KEY in CI, so real-data tests skip.
+      - name: Verify
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run pytest -m "not realdata" --cov=engine --cov-report=term-missing
+          if grep -rnq "slots=True" engine/; then echo "slots=True found"; exit 1; fi

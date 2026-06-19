@@ -1,0 +1,88 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trading-engine"
+version = "0.1.0"
+description = "Institutional-grade trading session dissection + self-learning signal engine on FMP data"
+readme = "README.md"
+requires-python = ">=3.9,<3.10"
+license = { text = "Proprietary" }
+authors = [{ name = "Billy Ribeiro" }]
+dependencies = [
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "requests>=2.31",
+    "pyarrow>=14.0",
+    "scipy>=1.11",
+    "statsmodels>=0.14",
+]
+
+[project.scripts]
+engine-session = "engine.session.__main__:main"
+engine-intraday = "engine.intraday.__main__:main"
+engine-gaps = "engine.gaps.__main__:main"
+
+# Dev tooling lives in a PEP 735 dependency group so it never ships in the wheel.
+# `uv sync` installs it by default; `uv sync --no-dev` for a runtime-only env.
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.6",
+    "mypy>=1.10",
+    "pandas-stubs",
+    "types-requests",
+    "pre-commit>=3.5",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["engine"]
+
+# --- test -------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+filterwarnings = [
+    # macOS system Python links LibreSSL; urllib3 v2 warns once. Benign here.
+    "ignore:.*OpenSSL.*:Warning",
+]
+markers = [
+    "realdata: hits the live FMP API; skipped unless FMP_API_KEY is set",
+    "slow: long-running test",
+]
+
+# --- lint / format ----------------------------------------------------------
+# target-version py39 guarantees ruff never rewrites code into 3.10+ syntax
+# (e.g. `X | None`), which would violate the hard Python 3.9 constraint.
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B", "UP", "W"]
+# UP037 would strip quotes from forward-ref annotations the code relies on under
+# `from __future__ import annotations`; keep the code as written.
+ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
+
+# --- types (advisory, not a hard gate in Task A) ----------------------------
+[tool.mypy]
+python_version = "3.9"
+warn_unused_ignores = true
+ignore_missing_imports = false
+
+[[tool.mypy.overrides]]
+module = ["scipy.*", "statsmodels.*", "pyarrow.*"]
+ignore_missing_imports = true
+
+# --- coverage ---------------------------------------------------------------
+[tool.coverage.run]
+source = ["engine"]
+omit = ["engine/*/__main__.py"]
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", "if __name__ == .__main__.:", "raise NotImplementedError"]
