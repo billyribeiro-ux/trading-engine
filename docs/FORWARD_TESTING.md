@@ -17,6 +17,7 @@ during discovery, so none is optional.
 | **FDR across versions** | `bakeoff.py` | Benjamini-Hochberg over every model/feature tried | inflated significance from searching |
 | **Rolling windows** | `runner.py` | persistence across N sequential out-of-time blocks | logistic that worked in one block but **2/5 windows** overall |
 | **Fresh symbols** | (run) | confirm on a symbol set never used in discovery | symbol-overfit / meta-search |
+| **Survivorship** | `tradeable_delisted` | pool in delisted names (the losers that died) | survivorship inflation of a mean-reversion edge |
 | **Interpretability** | `interpret.py` | drivers must be sensible & diversified | leak signatures (one feature at AUC ≈ 1.0) |
 
 `run_gauntlet(symbols, config, ...)` (`gauntlet.py`) bundles bake-off + rolling
@@ -31,6 +32,10 @@ is the common, honest result.
   rolling 6/6 windows, +0.60R over 337 distinct days, p=0.000; logistic 6/6,
   +0.56R, 224 days, p=0.000.
 - Generalizes to fresh symbols (5/5 windows on a set never used in discovery).
+- **Survives survivorship correction**: on a delisted-only pool (names that died)
+  the edge is still +0.45R (p=0.000); survivorship-free (90 names incl. delisted,
+  13,543 events) it PASSES both models 6/6. There is measurable inflation
+  (survivors +0.70 vs delisted +0.45) so the **de-biased estimate is ~+0.5–0.6R**.
 - Drivers (permutation importance on the holdout): `leg_bars`, `range_pos_60`,
   `leg_is_up`, `ma20_vs_ma50`, `dist_from_runlow`, `dist_from_ma50` — a coherent
   **mean-reversion + range-position + trend-regime** strategy, spread across ~8
@@ -41,7 +46,7 @@ is the common, honest result.
 ### Honest caveats (do not overstate)
 - This is **historical out-of-time** evidence, **not live**. Live confirmation is
   accruing via the journal (below).
-- Magnitude is **modest**: ~+0.5–0.7R over baseline, holdout AUC ~0.61.
+- Magnitude is **modest**: ~+0.5–0.6R over baseline (de-biased), holdout AUC ~0.61.
 - Costs are assumed (~0.02–0.05R); slippage on thin names matters.
 - "100% accurate" is impossible — a model near AUC 1.0 is a **leak**, not skill.
 - Edges decay. Re-run `run_gauntlet` periodically.
