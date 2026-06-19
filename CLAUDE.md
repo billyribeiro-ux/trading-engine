@@ -20,9 +20,9 @@ is **not a goal — it's the signature of a leak** (see AI_LANDMINES).
 uv sync --extra api --extra ml            # Python engine + API + research models
 cd frontend && pnpm install && cd ..      # frontend (pnpm only — npm is blocked)
 
-# API (uvicorn :8000) and dashboard (:5173) in two terminals
-uv run engine-api
-cd frontend && pnpm run dev               # http://localhost:5173
+# start everything (API :8000 + dashboard :5173); Ctrl-C stops both
+./scripts/dev.sh
+# (or run the two halves manually: `uv run engine-api` and `cd frontend && pnpm run dev`)
 ```
 
 Open the dashboard → **gear icon → paste FMP key → Validate & save** (no env var
@@ -30,8 +30,14 @@ needed; the key persists to `~/.config/fmp_engine/settings.json`, chmod 600).
 `FMP_API_KEY` in the env still works as a fallback. The saved key is used by the
 API **and** every CLI via `engine.settings.resolve_api_key()`.
 
-CLIs: `engine-session`, `engine-intraday`, `engine-gaps`, `engine-forward`
-(`scan`/`resolve`/`report`/`gauntlet`, with `--export FILE.{csv,xlsx}`).
+**Everything is in the dashboard:** run screens, click a symbol to dissect it,
+**Scan / Resolve / Export(CSV·XLSX)** the live journal, and Settings — all
+point-and-click. Only the heavy **gauntlet** is CLI-only for now (runs minutes;
+needs a background-job runner to not block the UI — a tracked next step).
+
+CLIs (same actions, scriptable): `engine-session`, `engine-intraday`,
+`engine-gaps`, `engine-forward` (`scan`/`resolve`/`report`/`gauntlet`, with
+`--export FILE.{csv,xlsx}`).
 
 ## Verify gate (run before every commit)
 
