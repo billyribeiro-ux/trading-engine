@@ -106,6 +106,18 @@ export interface DissectionHeader {
 	scale_atr: number | null;
 }
 
+export interface SettingsStatus {
+	configured: boolean;
+	source: "saved" | "env" | null;
+	masked: string | null;
+}
+
+export interface SettingsSaveResult {
+	ok: boolean;
+	masked: string | null;
+	tier: string | null;
+}
+
 export interface JournalEntry {
 	symbol: string;
 	scanner: string;

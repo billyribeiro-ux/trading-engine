@@ -2,6 +2,7 @@
 	import { dissect, screen } from "$lib/api";
 	import DissectionView from "$lib/components/DissectionView.svelte";
 	import JournalView from "$lib/components/JournalView.svelte";
+	import SettingsPanel from "$lib/components/SettingsPanel.svelte";
 	import type { Dissection, ScreenResponse } from "$lib/types";
 	import {
 		CalendarBlankIcon,
@@ -11,6 +12,7 @@
 		FlaskIcon,
 		FunnelIcon,
 		GaugeIcon,
+		GearSixIcon,
 		ListChecksIcon,
 		MagnifyingGlassIcon,
 		SlidersHorizontalIcon,
@@ -29,6 +31,7 @@
 	let lookbackDays = $state(60);
 	let probaThreshold = $state(0.55);
 	let fdr = $state(0.1);
+	let settingsOpen = $state(false);
 
 	function onScannerChange() {
 		lookbackDays = LOOKBACK_DEFAULT[scanner] ?? 60;
@@ -93,10 +96,15 @@
 <svelte:head><title>Trading Engine — Scanner</title></svelte:head>
 
 <main>
-	<h1>
-		<ChartLineUpIcon weight="duotone" size="1.4em" />
-		Trading Engine <span class="sub">scanner</span>
-	</h1>
+	<div class="topbar">
+		<h1>
+			<ChartLineUpIcon weight="duotone" size="1.4em" />
+			Trading Engine <span class="sub">scanner</span>
+		</h1>
+		<button class="settings-btn" onclick={() => (settingsOpen = true)} aria-label="Settings">
+			<GearSixIcon size={22} />
+		</button>
+	</div>
 
 	<form
 		class="controls"
@@ -268,6 +276,8 @@
 	<JournalView />
 </main>
 
+<SettingsPanel bind:open={settingsOpen} />
+
 <style>
 	main {
 		max-width: 1100px;
@@ -415,6 +425,25 @@
 		display: flex;
 		align-items: center;
 		gap: 0.4rem;
+	}
+	.topbar {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+	}
+	.settings-btn {
+		background: var(--bg-panel);
+		color: var(--muted);
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		padding: 0.4rem;
+		cursor: pointer;
+		display: inline-flex;
+		align-items: center;
+	}
+	.settings-btn:hover {
+		color: var(--accent);
 	}
 	hr {
 		border: none;

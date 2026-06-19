@@ -15,7 +15,15 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from engine.api.app import app, get_client, get_dissector, get_journal, get_screener
+from engine.api.app import (
+    app,
+    get_client,
+    get_dissector,
+    get_journal,
+    get_key_validator,
+    get_screener,
+    get_settings_store,
+)
 from engine.ml.signals import ScreenResult, Signal
 from engine.ml.validate import ValidationReport
 from engine.session.dissect import dissect_session
@@ -174,6 +182,54 @@ def test_journal_endpoint_reports_summary_and_entries(client, tmp_path):
     assert body["summary"]["resolved"] == 0
     assert len(body["entries"]) == 1
     assert body["entries"][0]["symbol"] == "TSLA"
+
+
+def test_settings_get_unconfigured(client, tmp_path, monkeypatch):
+    monkeypatch.delenv("FMP_API_KEY", raising=False)
+    from engine.api.settings import SettingsStore
+
+    app.dependency_overrides[get_settings_store] = lambda: SettingsStore(tmp_path / "s.json")
+    r = client.get("/settings")
+    assert r.status_code == 200
+    assert r.json() == {"configured": False, "source": None, "masked": None}
+
+
+def test_settings_post_validates_saves_and_masks(client, tmp_path, monkeypatch):
+    monkeypatch.delenv("FMP_API_KEY", raising=False)
+    from engine.api.settings import SettingsStore
+
+    store = SettingsStore(tmp_path / "s.json")
+    app.dependency_overrides[get_settings_store] = lambda: store
+    app.dependency_overrides[get_key_validator] = lambda: lambda k: {"tier": "ULTIMATE"}
+    r = client.post("/settings", json={"fmp_api_key": "ABCDEFGH1234"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] and body["tier"] == "ULTIMATE"
+    assert body["masked"].endswith("1234") and "ABCDEFGH" not in body["masked"]
+    assert store.get_api_key() == "ABCDEFGH1234"  # persisted full key
+    # GET now reports configured from the saved key
+    g = client.get("/settings").json()
+    assert g["configured"] and g["source"] == "saved" and g["masked"].endswith("1234")
+
+
+def test_settings_post_rejects_bad_key(client, tmp_path):
+    from engine.api.settings import SettingsStore
+
+    store = SettingsStore(tmp_path / "s.json")
+    app.dependency_overrides[get_settings_store] = lambda: store
+
+    def boom(_key):
+        raise RuntimeError("401 Unauthorized")
+
+    app.dependency_overrides[get_key_validator] = lambda: boom
+    r = client.post("/settings", json={"fmp_api_key": "badkey12345"})
+    assert r.status_code == 400
+    assert store.get_api_key() is None  # not saved on failure
+
+
+def test_settings_post_requires_min_length(client):
+    r = client.post("/settings", json={"fmp_api_key": "short"})
+    assert r.status_code == 422  # pydantic min_length
 
 
 def test_capabilities_reports_tier(client):

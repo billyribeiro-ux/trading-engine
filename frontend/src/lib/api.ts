@@ -2,7 +2,14 @@
 // Base URL from PUBLIC_API_BASE (set in .env), defaulting to the local dev server.
 
 import { env } from "$env/dynamic/public";
-import type { Dissection, JournalResponse, ScreenRequest, ScreenResponse } from "./types";
+import type {
+	Dissection,
+	JournalResponse,
+	ScreenRequest,
+	ScreenResponse,
+	SettingsSaveResult,
+	SettingsStatus
+} from "./types";
 
 const BASE = (env.PUBLIC_API_BASE ?? "http://127.0.0.1:8000").replace(/\/$/, "");
 
@@ -42,4 +49,17 @@ export async function capabilities(): Promise<{ tier: string; rate_limit_per_min
 
 export async function journal(): Promise<JournalResponse> {
 	return parse<JournalResponse>(await fetch(`${BASE}/journal`));
+}
+
+export async function getSettings(): Promise<SettingsStatus> {
+	return parse<SettingsStatus>(await fetch(`${BASE}/settings`));
+}
+
+export async function saveSettings(fmpApiKey: string): Promise<SettingsSaveResult> {
+	const res = await fetch(`${BASE}/settings`, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({ fmp_api_key: fmpApiKey })
+	});
+	return parse<SettingsSaveResult>(res);
 }

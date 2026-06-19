@@ -32,11 +32,13 @@ from ..portfolio.scanner import portfolio_config
 from ..session.runner import dissect_real_session
 from ..swing.scanner import swing_config
 from .serialize import dissection_to_dict, screen_to_dict
+from .settings import SettingsStore, mask_key
 
 # A screener maps a request -> ScreenResult; a dissector maps (symbol, tf, date)
 # -> (session, dissection, nested). Both are injected so tests can fake them.
 Screener = Callable[["ScreenRequest"], ScreenResult]
 Dissector = Callable[[str, Timeframe, Optional[str]], tuple]
+KeyValidator = Callable[[str], dict]
 
 
 _SCANNER_DEFAULT_LOOKBACK = {"intraday": 60, "swing": 730, "portfolio": 2920}
@@ -55,15 +57,40 @@ class ScreenRequest(BaseModel):
     min_edge_r: float = Field(0.0, description="Minimum OOS edge over baseline (R)")
 
 
+class SettingsBody(BaseModel):
+    fmp_api_key: str = Field(..., min_length=8, description="Financial Modeling Prep API key")
+
+
 @lru_cache(maxsize=4)
 def _client_for(key: str) -> FMPClient:
     return FMPClient(key)
 
 
+def _resolve_store() -> SettingsStore:
+    path = os.environ.get("SETTINGS_PATH")
+    return SettingsStore(Path(path) if path else None)
+
+
+def get_settings_store() -> SettingsStore:
+    return _resolve_store()
+
+
+def get_key_validator() -> KeyValidator:
+    """Validate a key by asking FMP what it can do (overridden in tests)."""
+
+    def validate(key: str) -> dict:
+        return _client_for(key).capabilities()
+
+    return validate
+
+
 def get_client() -> FMPClient:
-    key = os.environ.get("FMP_API_KEY")
+    # A key saved via the dashboard wins; FMP_API_KEY env is the fallback/bootstrap.
+    key = _resolve_store().get_api_key() or os.environ.get("FMP_API_KEY")
     if not key:
-        raise HTTPException(status_code=503, detail="FMP_API_KEY not set on the server")
+        raise HTTPException(
+            status_code=503, detail="FMP API key not configured — add it in Settings"
+        )
     return _client_for(key)
 
 
@@ -151,6 +178,33 @@ def create_app() -> FastAPI:
             },
             "entries": j.entries()[-200:],
         }
+
+    @app.get("/settings")
+    def read_settings(store: SettingsStore = Depends(get_settings_store)) -> dict:
+        """Dashboard settings status. Never returns the full key — only a mask."""
+        saved = store.get_api_key()
+        env = os.environ.get("FMP_API_KEY")
+        return {
+            "configured": bool(saved or env),
+            "source": "saved" if saved else ("env" if env else None),
+            "masked": store.masked_key() if saved else (mask_key(env) if env else None),
+        }
+
+    @app.post("/settings")
+    def write_settings(
+        body: SettingsBody,
+        store: SettingsStore = Depends(get_settings_store),
+        validate: KeyValidator = Depends(get_key_validator),
+    ) -> dict:
+        """Validate the FMP key against the API, then persist it (0600). A saved key
+        takes precedence over the FMP_API_KEY env var on the next request."""
+        key = body.fmp_api_key.strip()
+        try:
+            caps = validate(key)
+        except Exception as exc:  # bad key, network, tier probe failure
+            raise HTTPException(status_code=400, detail=f"FMP rejected the key: {exc}") from exc
+        store.set_api_key(key)
+        return {"ok": True, "masked": store.masked_key(), "tier": caps.get("tier")}
 
     @app.post("/screen")
     def screen(req: ScreenRequest, screener: Screener = Depends(get_screener)) -> dict:
