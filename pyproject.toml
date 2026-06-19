@@ -24,6 +24,7 @@ engine-session = "engine.session.__main__:main"
 engine-intraday = "engine.intraday.__main__:main"
 engine-gaps = "engine.gaps.__main__:main"
 engine-api = "engine.api.__main__:main"
+engine-forward = "engine.forward.__main__:main"
 
 # Optional API layer (the dashboard backend). Install with: uv sync --extra api
 # or pip install '.[api]'. Kept out of the core so the engine stays lean.
