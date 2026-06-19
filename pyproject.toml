@@ -23,6 +23,15 @@ dependencies = [
 engine-session = "engine.session.__main__:main"
 engine-intraday = "engine.intraday.__main__:main"
 engine-gaps = "engine.gaps.__main__:main"
+engine-api = "engine.api.__main__:main"
+
+# Optional API layer (the dashboard backend). Install with: uv sync --extra api
+# or pip install '.[api]'. Kept out of the core so the engine stays lean.
+[project.optional-dependencies]
+api = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+]
 
 # Dev tooling lives in a PEP 735 dependency group so it never ships in the wheel.
 # `uv sync` installs it by default; `uv sync --no-dev` for a runtime-only env.
@@ -35,6 +44,9 @@ dev = [
     "pandas-stubs",
     "types-requests",
     "pre-commit>=3.5",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "httpx>=0.27",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -68,6 +80,10 @@ ignore = ["B008"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B011"]
+# FastAPI evaluates endpoint annotations at RUNTIME; on Python 3.9 a PEP 604
+# `X | None` can't be eval'd, so the API layer must use typing.Optional. Stop
+# ruff from "upgrading" it back to `| None`.
+"engine/api/*" = ["UP007", "UP045"]
 
 # --- types (advisory, not a hard gate in Task A) ----------------------------
 [tool.mypy]
