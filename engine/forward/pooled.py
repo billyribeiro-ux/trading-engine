@@ -55,6 +55,48 @@ def build_pooled_frame(
     return pooled.sort_values(["date", "event_index"]).reset_index(drop=True)
 
 
+def tradeable_delisted(
+    client,
+    config: ScannerConfig,
+    *,
+    limit: int = 50,
+    pages: int = 8,
+    min_events: int = 150,
+    ipo_before: str = "2021-01-01",
+    exchanges: tuple[str, ...] = ("NASDAQ", "NYSE", "AMEX"),
+) -> list[str]:
+    """Recently-delisted US names that actually traded the window (built a frame
+    with >= min_events). Pooling these IN removes survivorship bias — the losers
+    that died are exactly what a survivors-only screen omits, and that omission
+    most inflates a mean-reversion edge. Filters to real US exchanges and an IPO
+    old enough to have window history; verifies each builds before including it."""
+    frames = []
+    for p in range(pages):
+        try:
+            df = client.fetch("delisted_companies", params={"page": p, "limit": 100})
+        except Exception:
+            break
+        if df is None or df.empty:
+            break
+        frames.append(df)
+    if not frames:
+        return []
+    d = pd.concat(frames, ignore_index=True)
+    d["ip"] = pd.to_datetime(d.get("ipoDate"), errors="coerce")
+    cand = d[d["exchange"].isin(exchanges) & (d["ip"] <= pd.Timestamp(ipo_before))]
+    out: list[str] = []
+    for sym in sorted({s.strip().upper() for s in cand["symbol"].dropna()}):
+        try:
+            f = config.frame_builder(sym)
+        except Exception:
+            continue
+        if f is not None and len(f) >= min_events:
+            out.append(sym)
+        if len(out) >= limit:
+            break
+    return out
+
+
 def pooled_bakeoff(
     symbols: Sequence[str],
     config: ScannerConfig,

@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 
 from engine.forward.bakeoff import ModelVersion
-from engine.forward.pooled import build_pooled_frame, pooled_bakeoff
+from engine.forward.pooled import build_pooled_frame, pooled_bakeoff, tradeable_delisted
 from engine.ml.labels import BracketSpec
 from engine.ml.signals import ScannerConfig
 
@@ -74,6 +74,36 @@ def test_pooled_persistent_edge_is_promoted():
     )
     assert rows and rows[0].promoted, "a persistent edge pooled across symbols must promote"
     assert rows[0].result.realized_edge_r > 0
+
+
+class _FakeDelistedClient:
+    def __init__(self, df: pd.DataFrame):
+        self._df = df
+
+    def fetch(self, key, params=None, use_cache=True):
+        page = (params or {}).get("page", 0)
+        return self._df if page == 0 else self._df.iloc[0:0]
+
+
+def test_tradeable_delisted_filters_exchange_ipo_and_verifies_data():
+    df = pd.DataFrame(
+        {
+            "symbol": ["AAA", "BBB", "CCC", "DDD"],
+            "exchange": ["NASDAQ", "OTC", "NYSE", "NASDAQ"],
+            "ipoDate": ["2010-01-01", "2010-01-01", "2010-01-01", "2025-01-01"],
+        }
+    )
+    sizes = {"AAA": 300, "CCC": 10}  # CCC has too few events; AAA qualifies
+    cfg = ScannerConfig(
+        frame_builder=lambda s: pd.DataFrame({"x": range(sizes.get(s, 0))}),
+        current_provider=lambda s: [],
+        bracket=BracketSpec(2.0, 1.0, max_bars=2, name="t"),
+    )
+    res = tradeable_delisted(
+        _FakeDelistedClient(df), cfg, limit=50, pages=2, min_events=150, ipo_before="2021-01-01"
+    )
+    # AAA only: BBB=OTC, CCC=too few events, DDD=ipo too recent
+    assert res == ["AAA"]
 
 
 def test_pooled_noise_promotes_nothing():

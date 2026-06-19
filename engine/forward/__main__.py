@@ -28,6 +28,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--direction", default="long", choices=["long", "short"])
     p.add_argument("--proba", type=float, default=0.55)
     p.add_argument("--lookback", type=int, default=2920)
+    p.add_argument(
+        "--include-delisted",
+        type=int,
+        default=0,
+        help="gauntlet: append N tradeable delisted US names (survivorship-free)",
+    )
     p.add_argument("--journal", default=None)
     args = p.parse_args(argv)
 
@@ -75,9 +81,15 @@ def main(argv: list[str] | None = None) -> int:
             )
     elif args.action == "gauntlet":
         from .gauntlet import render_gauntlet, run_gauntlet
+        from .pooled import tradeable_delisted
 
         config = _config_for(client, live)
-        v = run_gauntlet(live.symbols, config, models=("logistic", "gbt"), direction=live.direction)
+        syms = list(live.symbols)
+        if args.include_delisted > 0:
+            extra = tradeable_delisted(client, config, limit=args.include_delisted)
+            print(f"+ {len(extra)} delisted names appended (survivorship-free): {extra}")
+            syms += extra
+        v = run_gauntlet(syms, config, models=("logistic", "gbt"), direction=live.direction)
         print(render_gauntlet(v))
     else:  # resolve
         rows = resolve(client, live, journal)
