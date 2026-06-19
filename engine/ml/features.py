@@ -26,11 +26,10 @@ import numpy as np
 import pandas as pd
 
 from ..session.dissect import (
-    ClassifiedLeg,
-    LegRole,
     SessionDissection,
     VwapEventType,
 )
+from ..session.pivots import Leg
 from ..session.session import Session
 
 # Event-type taxonomy for the learning layer. Each is a moment where a decision
@@ -157,24 +156,45 @@ def _session_context(session: Session, idx: int) -> dict[str, float]:
     }
 
 
-def _leg_features(cl: ClassifiedLeg, atr: float) -> dict[str, float]:
-    """Structural features of a just-completed leg (causal: leg is finished)."""
-    leg = cl.leg
+def _causal_leg_features(session: Session, leg: Leg, idx: int, atr: float) -> dict[str, float]:
+    """
+    Structural features of a just-completed leg, computed CAUSALLY at `idx` (the
+    leg's confirmation bar -- the earliest bar the leg is known).
+
+    Deliberately uses NONE of the dissection's classified roles: those derive from
+    full-session extremes (session.high/low) and dominant direction (open vs the
+    session CLOSE), which are FUTURE information at the decision bar. Feeding them
+    to the model is a lookahead leak (e.g. "leg reached the session low" perfectly
+    predicts a long win). Instead we use only quantities knowable at `idx`:
+    magnitude, duration, VWAP relationship, and position vs the RUNNING extremes so
+    far. "At a new low so far" is causal and weakly predictive (mean reversion);
+    "at THE day's low" is not knowable and is therefore excluded.
+    """
+    b = session.bars
+    upto = b.iloc[: idx + 1]
+    vwap = session.vwap
+    tol = 0.05 * atr
+    run_high = float(upto["high"].max())
+    run_low = float(upto["low"].min())
+    # VWAP side at the leg's endpoints (causal: both indices <= leg.end_index <= idx).
+    sv = float(vwap.iloc[leg.start_index])
+    ev = float(vwap.iloc[leg.end_index])
+    start_delta = leg.start_price - sv
+    end_delta = leg.end_price - ev
+    crossed = (start_delta < 0 < end_delta) or (start_delta > 0 > end_delta)
     return {
-        "leg_magnitude_atr": cl.magnitude_atr,
+        "leg_magnitude_atr": leg.magnitude / atr if atr > 0 else 0.0,
         "leg_bars": float(leg.bars),
         "leg_is_up": 1.0 if leg.direction == "up" else 0.0,
-        "leg_crossed_vwap": 1.0 if cl.crossed_vwap else 0.0,
-        "leg_reached_hod": 1.0 if cl.reached_hod else 0.0,
-        "leg_reached_lod": 1.0 if cl.reached_lod else 0.0,
-        "role_flush": 1.0 if LegRole.FLUSH in cl.roles else 0.0,
-        "role_reversal": 1.0 if LegRole.VWAP_RECLAIM in cl.roles else 0.0,
-        "role_trend": 1.0 if LegRole.TREND_LEG in cl.roles else 0.0,
-        "role_retrace": 1.0 if LegRole.RETRACE in cl.roles else 0.0,
-        "role_hod_test": 1.0 if LegRole.HOD_TEST in cl.roles else 0.0,
-        "role_lod_test": 1.0 if LegRole.LOD_TEST in cl.roles else 0.0,
-        "start_below_vwap": 1.0 if cl.start_vs_vwap == "below" else 0.0,
-        "end_above_vwap": 1.0 if cl.end_vs_vwap == "above" else 0.0,
+        "leg_crossed_vwap": 1.0 if crossed else 0.0,
+        "leg_start_below_vwap": 1.0 if start_delta < 0 else 0.0,
+        "leg_end_above_vwap": 1.0 if end_delta > 0 else 0.0,
+        "confirmation_lag_bars": float(idx - leg.end_index),
+        # Causal "new extreme so far" (running, not full-session).
+        "at_running_high": 1.0 if leg.end_price >= run_high - tol else 0.0,
+        "at_running_low": 1.0 if leg.end_price <= run_low + tol else 0.0,
+        "leg_end_vs_runhigh_atr": (leg.end_price - run_high) / atr if atr > 0 else 0.0,
+        "leg_end_vs_runlow_atr": (leg.end_price - run_low) / atr if atr > 0 else 0.0,
     }
 
 
@@ -186,22 +206,31 @@ def extract_session_events(session: Session, dissection: SessionDissection) -> l
     test. Each carries session context at its decision bar plus event-specific
     structure. Labels are NOT attached here -- see labels.py.
     """
-    atr = session.atr_mean if session.atr_mean > 0 else 1.0
     out: list[EventFeatures] = []
+    n = len(session)
 
-    # Leg-completion events (decision bar = leg end).
+    # Leg-completion events. CAUSAL decision bar = the leg's CONFIRMATION bar, not
+    # its extreme: a zigzag pivot is only known once price reverses past it, so
+    # entering/labeling at the extreme is lookahead. Entry price is the close at
+    # confirmation -- the realistic fill. Normalization uses causal ATR at `idx`.
     for cl in dissection.classified_legs:
-        idx = cl.leg.end_index
+        leg = cl.leg
+        idx = min(leg.decision_index, n - 1)
+        catr = _causal_atr(session, idx)
         ctx = _session_context(session, idx)
-        feats = {**ctx, **_leg_features(cl, atr)}
+        feats = {**ctx, **_causal_leg_features(session, leg, idx, catr)}
         out.append(
             EventFeatures(
                 symbol=session.symbol,
                 date=session.date,
                 event_type="leg_complete",
                 event_index=idx,
-                event_time=cl.leg.end_time,
-                event_price=cl.leg.end_price,
+                event_time=(
+                    leg.confirmed_time
+                    if leg.confirmed_time is not None
+                    else pd.Timestamp(session.bars["datetime"].iloc[idx])
+                ),
+                event_price=float(session.bars["close"].iloc[idx]),
                 features=feats,
             )
         )
@@ -214,8 +243,9 @@ def extract_session_events(session: Session, dissection: SessionDissection) -> l
         VwapEventType.RETEST_FAIL: "vwap_retest_fail",
     }
     for ev in dissection.vwap_events:
+        catr = _causal_atr(session, ev.index)
         ctx = _session_context(session, ev.index)
-        feats = {**ctx, "event_vwap_dist_atr": (ev.price - ev.vwap) / atr}
+        feats = {**ctx, "event_vwap_dist_atr": (ev.price - ev.vwap) / catr}
         out.append(
             EventFeatures(
                 symbol=session.symbol,
@@ -230,11 +260,12 @@ def extract_session_events(session: Session, dissection: SessionDissection) -> l
 
     # Level-test events.
     for le in dissection.level_events:
+        catr = _causal_atr(session, le.index)
         ctx = _session_context(session, le.index)
         feats = {
+            # level_held is an OUTCOME read from a FUTURE bar -- excluded (leak).
             **ctx,
-            "level_held": 1.0 if le.held else 0.0,
-            "level_dist_atr": (le.price - le.level) / atr,
+            "level_dist_atr": (le.price - le.level) / catr,
         }
         out.append(
             EventFeatures(

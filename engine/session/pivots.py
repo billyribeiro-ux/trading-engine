@@ -60,6 +60,19 @@ class Leg:
     start_price: float
     end_price: float
     scale_atr: float
+    # The bar at which the END pivot is CONFIRMED (causal). A zigzag pivot is only
+    # known once price reverses past it, so this -- not end_index (the extreme) --
+    # is the earliest bar a trader could act on the completed leg. -1 = unknown
+    # (e.g. hand-built legs); decision_index falls back to end_index then.
+    confirmed_index: int = -1
+    confirmed_time: pd.Timestamp | None = None
+
+    @property
+    def decision_index(self) -> int:
+        """Earliest CAUSAL bar the completed leg is known (its confirmation, not
+        its extreme). The only bar an event off this leg may be entered/labeled
+        without lookahead. Falls back to end_index when confirmation is absent."""
+        return self.confirmed_index if self.confirmed_index >= 0 else self.end_index
 
     @property
     def direction(self) -> str:
@@ -220,6 +233,8 @@ def legs_from_pivots(session: Session, pivots: list[Pivot]) -> list[Leg]:
                 start_price=a.price,
                 end_price=c.price,
                 scale_atr=a.scale_atr,
+                confirmed_index=c.confirmed_index,
+                confirmed_time=c.confirmed_time,
             )
         )
     return legs
@@ -346,6 +361,9 @@ def merge_insignificant_swings(
                                 start_price=a.start_price,
                                 end_price=c.end_price,
                                 scale_atr=a.scale_atr,
+                                # Merged leg is "known" when its END pivot confirms.
+                                confirmed_index=c.confirmed_index,
+                                confirmed_time=c.confirmed_time,
                             )
                         )
                         i += 3
