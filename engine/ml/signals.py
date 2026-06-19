@@ -85,6 +85,7 @@ class Signal:
     bracket_name: str
     reward_risk: float
     proba_threshold: float
+    max_bars: int = 0  # bracket holding horizon (bars); used by the forward journal
 
     @property
     def risk_per_share(self) -> float:
@@ -119,6 +120,7 @@ class Signal:
             "n_events": self.n_events,
             "n_signals": self.n_signals,
             "bracket": self.bracket_name,
+            "max_bars": self.max_bars,
         }
 
 
@@ -370,6 +372,7 @@ def _build_signal(
         bracket_name=vc.bracket.name,
         reward_risk=vc.bracket.reward_risk,
         proba_threshold=proba_threshold,
+        max_bars=vc.bracket.max_bars,
     )
 
 
