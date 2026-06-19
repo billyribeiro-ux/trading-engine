@@ -182,6 +182,11 @@ class ScannerConfig:
     max_decay: float = 0.75
     min_events: int = 40
     cost_r: float = 0.05
+    # Minimum OOS signals a config must have taken to be trustworthy. A big edge
+    # on a handful of trades is the multiple-testing tail, not skill (e.g. a real
+    # screen surfaced AMZN at +1.23R / p_fdr=0.014 on just 8 signals with AUC
+    # 0.568 -- near chance). Don't emit from <min_signals OOS trades.
+    min_signals: int = 20
 
 
 # ---------------------------------------------------------------------------
@@ -273,7 +278,7 @@ def _validate_candidates(symbols: Sequence[str], config: ScannerConfig) -> list[
 def _survives(report: ValidationReport, config: ScannerConfig) -> bool:
     """The survival gate. Every clause is necessary; none alone is sufficient."""
     return (
-        report.n_total_signals > 0
+        report.n_total_signals >= config.min_signals
         and report.p_value_fdr < config.fdr
         and report.oos_net_expectancy_r > config.min_edge_r
         and report.decay <= config.max_decay

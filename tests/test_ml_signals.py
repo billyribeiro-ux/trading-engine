@@ -17,6 +17,8 @@ seam is what lets one code path serve the intraday, swing, and portfolio scanner
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -181,3 +183,19 @@ def test_low_probability_event_is_not_emitted_even_when_config_survives():
     assert result.survivors, "expected the planted-long config to survive"
     assert all(s.probability >= 0.55 for s in result.signals)
     assert not any(s.event_type == "vwap_loss" for s in result.signals)
+
+
+def test_min_signals_floor_blocks_thin_edges():
+    """A real edge on too few OOS trades must NOT survive — that's the multiple-
+    testing tail (e.g. the live AMZN +1.23R on 8 signals). With an absurd floor,
+    even the strong planted-long config is rejected."""
+    ev = ScorableEvent(
+        "vwap_reclaim", pd.Timestamp("2026-06-18 10:00"), 100.0, 2.0, {"signal": 3.0}
+    )
+    cfg = replace(
+        _config(long_planted=True, short_planted=False, events=[ev]),
+        min_signals=10_000,
+    )
+    result = batch_rank(["AAA"], cfg)
+    assert result.survivors == ()
+    assert result.signals == ()
