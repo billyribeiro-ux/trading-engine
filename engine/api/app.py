@@ -202,14 +202,12 @@ def _journal_payload(j: SignalJournal) -> dict:
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Trading Engine API", version="0.1.0")
-    # The SvelteKit dev server runs on 5173; allow local origins.
+    # Allow ANY localhost port — Vite drifts (5173 -> 5174 -> ...) when a port is
+    # taken, and the browser blocks cross-origin calls if that port isn't allowed.
+    # Scoped to localhost/127.0.0.1 only (local dev app), not external origins.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-            "http://localhost:4173",
-        ],
+        allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
         allow_methods=["*"],
         allow_headers=["*"],
     )

@@ -89,6 +89,13 @@ def test_health_needs_no_key(client):
     assert r.status_code == 200 and r.json()["status"] == "ok"
 
 
+def test_cors_allows_any_localhost_port(client):
+    # Vite drifts (5173 -> 5174 -> ...); the API must allow any localhost origin.
+    for origin in ("http://localhost:5174", "http://127.0.0.1:5199", "http://localhost:5173"):
+        r = client.get("/health", headers={"Origin": origin})
+        assert r.headers.get("access-control-allow-origin") == origin, origin
+
+
 def test_screen_returns_ranked_signals(client):
     _override_screener(ScreenResult((_signal(),), (), (_report("TSLA", 0.03),)))
     r = client.post("/screen", json={"symbols": ["TSLA"], "lookback_days": 60})
